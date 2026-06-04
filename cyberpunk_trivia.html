@@ -1,0 +1,1471 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CYBERPUNK TRIVIA // Neural Knowledge Assessment</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a12;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: 'Share Tech Mono', monospace;
+    color: #e0e0ff;
+    overflow: hidden;
+    user-select: none;
+  }
+
+  /* Animated grid background */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background:
+      linear-gradient(rgba(0,255,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,255,0.03) 1px, transparent 1px);
+    background-size: 50px 50px;
+    animation: gridPulse 8s ease-in-out infinite alternate;
+    pointer-events: none;
+    z-index: 0;
+  }
+
+  @keyframes gridPulse {
+    0% { opacity: 0.4; }
+    100% { opacity: 1; }
+  }
+
+  /* Scanline overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 2px, rgba(0,0,0,0.07) 2px, rgba(0,0,0,0.07) 4px
+    );
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  /* Floating particles */
+  .particles-container {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .particle {
+    position: absolute;
+    width: 2px;
+    height: 2px;
+    border-radius: 50%;
+    animation: floatUp linear infinite;
+    opacity: 0;
+  }
+
+  @keyframes floatUp {
+    0% { transform: translateY(100vh); opacity: 0; }
+    10% { opacity: 0.7; }
+    90% { opacity: 0.7; }
+    100% { transform: translateY(-10vh); opacity: 0; }
+  }
+
+  /* Glitch line effects */
+  .glitch-line {
+    position: fixed;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    opacity: 0;
+    z-index: 999;
+    pointer-events: none;
+  }
+
+  #game-wrapper {
+    position: relative;
+    z-index: 1;
+    width: 100%;
+    max-width: 800px;
+    padding: 20px;
+  }
+
+  /* ============================================================ */
+  /* MENU SCREEN                                                    */
+  /* ============================================================ */
+  #menu-screen {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 80vh;
+    text-align: center;
+  }
+
+  #menu-screen.hidden { display: none; }
+
+  .title-main {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(32px, 6vw, 56px);
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.12em;
+    background: linear-gradient(180deg, #0ff 0%, #f0f 40%, #ff0 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: drop-shadow(0 0 20px rgba(0,255,255,0.6)) drop-shadow(0 0 40px rgba(255,0,255,0.3));
+    animation: titleGlow 3s ease-in-out infinite alternate;
+    margin-bottom: 8px;
+  }
+
+  @keyframes titleGlow {
+    0% { filter: drop-shadow(0 0 20px rgba(0,255,255,0.5)) drop-shadow(0 0 40px rgba(255,0,255,0.3)); }
+    100% { filter: drop-shadow(0 0 30px rgba(255,0,255,0.7)) drop-shadow(0 0 60px rgba(0,255,255,0.4)); }
+  }
+
+  .title-sub {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(10px, 2vw, 15px);
+    color: rgba(0,255,255,0.5);
+    letter-spacing: 0.5em;
+    text-transform: uppercase;
+    margin-bottom: 40px;
+  }
+
+  .neon-divider {
+    width: 80%;
+    max-width: 400px;
+    height: 2px;
+    margin: 0 auto 30px;
+    background: linear-gradient(90deg, transparent, #0ff, #f0f, #0ff, transparent);
+    box-shadow: 0 0 10px #0ff, 0 0 20px rgba(255,0,255,0.5);
+  }
+
+  .menu-stats {
+    display: flex;
+    gap: 30px;
+    margin-bottom: 40px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.15em;
+  }
+
+  .menu-stat {
+    color: rgba(200,200,255,0.4);
+  }
+
+  .menu-stat span {
+    color: #0ff;
+    text-shadow: 0 0 8px rgba(0,255,255,0.6);
+  }
+
+  .btn-start {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(14px, 2vw, 18px);
+    font-weight: 700;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    padding: 16px 50px;
+    background: linear-gradient(180deg, rgba(0,255,255,0.15), rgba(0,255,255,0.05));
+    border: 1px solid #0ff;
+    border-radius: 4px;
+    color: #0ff;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .btn-start::before {
+    content: '';
+    position: absolute;
+    top: 0; left: -100%;
+    width: 100%; height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+    transition: left 0.5s ease;
+  }
+
+  .btn-start:hover::before { left: 100%; }
+
+  .btn-start:hover {
+    background: linear-gradient(180deg, rgba(0,255,255,0.3), rgba(0,255,255,0.1));
+    box-shadow: 0 0 30px rgba(0,255,255,0.4), inset 0 0 20px rgba(0,255,255,0.1);
+    transform: scale(1.04);
+  }
+
+  .menu-controls {
+    margin-top: 30px;
+    font-size: 11px;
+    color: rgba(200,200,255,0.25);
+    letter-spacing: 0.1em;
+    line-height: 2;
+  }
+
+  .menu-controls kbd {
+    background: rgba(0,255,255,0.1);
+    border: 1px solid rgba(0,255,255,0.2);
+    padding: 2px 8px;
+    border-radius: 3px;
+    color: #0ff;
+    font-family: 'Share Tech Mono', monospace;
+  }
+
+  /* ============================================================ */
+  /* GAME SCREEN                                                    */
+  /* ============================================================ */
+  #game-screen { display: none; }
+  #game-screen.active { display: block; }
+
+  /* HUD Bar */
+  .hud-bar {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 10px 20px;
+    margin-bottom: 20px;
+    background: rgba(10,10,20,0.8);
+    border: 1px solid rgba(0,255,255,0.15);
+    border-radius: 6px;
+    font-family: 'Orbitron', sans-serif;
+  }
+
+  .hud-section {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 2px;
+  }
+
+  .hud-label {
+    font-size: 8px;
+    letter-spacing: 0.2em;
+    color: rgba(0,255,255,0.4);
+    text-transform: uppercase;
+  }
+
+  .hud-value {
+    font-size: clamp(16px, 3vw, 22px);
+    font-weight: 700;
+  }
+
+  .hud-value.score { color: #ff0; text-shadow: 0 0 10px rgba(255,255,0,0.6); }
+  .hud-value.question-num { color: #0ff; text-shadow: 0 0 10px rgba(0,255,255,0.6); }
+  .hud-value.timer-val { color: #f0f; text-shadow: 0 0 10px rgba(255,0,255,0.6); }
+  .hud-value.streak-val { color: #0f0; text-shadow: 0 0 10px rgba(0,255,0,0.6); }
+
+  /* Progress Bar */
+  .progress-track {
+    width: 100%;
+    height: 4px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 2px;
+    margin-bottom: 24px;
+    overflow: hidden;
+  }
+
+  .progress-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #0ff, #f0f, #ff0);
+    border-radius: 2px;
+    transition: width 0.5s ease;
+    box-shadow: 0 0 8px rgba(0,255,255,0.5);
+  }
+
+  /* Timer Bar */
+  .timer-track {
+    width: 100%;
+    height: 3px;
+    background: rgba(255,255,255,0.05);
+    border-radius: 2px;
+    margin-bottom: 20px;
+    overflow: hidden;
+  }
+
+  .timer-fill {
+    height: 100%;
+    width: 100%;
+    background: linear-gradient(90deg, #f44, #ff0, #0f0);
+    border-radius: 2px;
+    transition: width 0.1s linear;
+  }
+
+  .timer-fill.warning { background: linear-gradient(90deg, #f44, #f80); }
+  .timer-fill.critical { background: #f44; animation: timerPulse 0.3s ease-in-out infinite alternate; }
+
+  @keyframes timerPulse {
+    from { opacity: 1; }
+    to { opacity: 0.5; }
+  }
+
+  /* Question Panel */
+  .question-panel {
+    background: linear-gradient(180deg, rgba(15,15,30,0.95), rgba(8,8,18,0.98));
+    border: 1px solid rgba(0,255,255,0.2);
+    border-radius: 8px;
+    padding: 30px;
+    margin-bottom: 20px;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .question-panel::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    height: 2px;
+    background: linear-gradient(90deg, transparent, #0ff, #f0f, transparent);
+  }
+
+  .question-category {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    color: rgba(0,255,255,0.4);
+    margin-bottom: 12px;
+  }
+
+  .question-text {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(16px, 3vw, 22px);
+    font-weight: 700;
+    line-height: 1.5;
+    color: #fff;
+    text-shadow: 0 0 20px rgba(255,255,255,0.1);
+  }
+
+  /* Answer Options */
+  .options-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+    margin-bottom: 20px;
+  }
+
+  @media (max-width: 600px) {
+    .options-grid { grid-template-columns: 1fr; }
+  }
+
+  .option-btn {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 16px 20px;
+    background: rgba(10,10,25,0.9);
+    border: 1px solid rgba(0,255,255,0.15);
+    border-radius: 6px;
+    color: #e0e0ff;
+    font-family: 'Share Tech Mono', monospace;
+    font-size: clamp(13px, 2vw, 15px);
+    cursor: pointer;
+    transition: all 0.2s ease;
+    overflow: hidden;
+    text-align: left;
+  }
+
+  .option-btn::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0;
+    width: 3px;
+    height: 100%;
+    background: #0ff;
+    opacity: 0.3;
+    transition: opacity 0.2s ease;
+  }
+
+  .option-key {
+    flex-shrink: 0;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: rgba(0,255,255,0.1);
+    border: 1px solid rgba(0,255,255,0.3);
+    border-radius: 4px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    font-weight: 700;
+    color: #0ff;
+  }
+
+  .option-btn:hover:not(.disabled) {
+    border-color: rgba(0,255,255,0.5);
+    background: rgba(0,255,255,0.08);
+    box-shadow: 0 0 15px rgba(0,255,255,0.15);
+  }
+
+  .option-btn:hover:not(.disabled)::before {
+    opacity: 1;
+  }
+
+  .option-btn.correct {
+    border-color: #0f0 !important;
+    background: rgba(0,255,0,0.15) !important;
+    box-shadow: 0 0 20px rgba(0,255,0,0.3), inset 0 0 20px rgba(0,255,0,0.05);
+    animation: correctFlash 0.5s ease;
+  }
+
+  .option-btn.correct::before { background: #0f0; opacity: 1; }
+  .option-btn.correct .option-key { border-color: #0f0; color: #0f0; background: rgba(0,255,0,0.2); }
+
+  .option-btn.incorrect {
+    border-color: #f44 !important;
+    background: rgba(255,68,68,0.15) !important;
+    box-shadow: 0 0 20px rgba(255,68,68,0.3), inset 0 0 20px rgba(255,68,68,0.05);
+    animation: incorrectShake 0.4s ease;
+  }
+
+  .option-btn.incorrect::before { background: #f44; opacity: 1; }
+  .option-btn.incorrect .option-key { border-color: #f44; color: #f44; background: rgba(255,68,68,0.2); }
+
+  .option-btn.disabled {
+    cursor: default;
+    opacity: 0.5;
+  }
+
+  .option-btn.show-correct {
+    border-color: rgba(0,255,0,0.4) !important;
+    opacity: 1 !important;
+  }
+
+  @keyframes correctFlash {
+    0% { transform: scale(1); }
+    30% { transform: scale(1.02); }
+    100% { transform: scale(1); }
+  }
+
+  @keyframes incorrectShake {
+    0%, 100% { transform: translateX(0); }
+    20% { transform: translateX(-6px); }
+    40% { transform: translateX(6px); }
+    60% { transform: translateX(-4px); }
+    80% { transform: translateX(4px); }
+  }
+
+  /* Feedback Display */
+  .feedback-bar {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 12px 20px;
+    border-radius: 6px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    margin-bottom: 12px;
+  }
+
+  .feedback-bar.show { display: flex; }
+  .feedback-bar.correct-fb {
+    background: rgba(0,255,0,0.1);
+    border: 1px solid rgba(0,255,0,0.3);
+    color: #0f0;
+    text-shadow: 0 0 10px rgba(0,255,0,0.5);
+  }
+  .feedback-bar.incorrect-fb {
+    background: rgba(255,68,68,0.1);
+    border: 1px solid rgba(255,68,68,0.3);
+    color: #f44;
+    text-shadow: 0 0 10px rgba(255,68,68,0.5);
+  }
+  .feedback-bar.timeout-fb {
+    background: rgba(255,255,0,0.1);
+    border: 1px solid rgba(255,255,0,0.3);
+    color: #ff0;
+    text-shadow: 0 0 10px rgba(255,255,0,0.5);
+  }
+
+  .explanation-text {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    font-weight: 400;
+    color: rgba(200,200,255,0.6);
+    text-transform: none;
+    letter-spacing: 0;
+    margin-top: 4px;
+    text-align: center;
+    line-height: 1.4;
+  }
+
+  /* ============================================================ */
+  /* RESULTS SCREEN                                                 */
+  /* ============================================================ */
+  #results-screen { display: none; }
+  #results-screen.active {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    min-height: 80vh;
+    text-align: center;
+  }
+
+  .results-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(24px, 5vw, 40px);
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    margin-bottom: 8px;
+  }
+
+  .results-title.pass { 
+    background: linear-gradient(180deg, #0f0, #0ff);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: drop-shadow(0 0 20px rgba(0,255,0,0.5));
+  }
+
+  .results-title.fail {
+    background: linear-gradient(180deg, #f44, #f80);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: drop-shadow(0 0 20px rgba(255,68,68,0.5));
+  }
+
+  .results-rank {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(14px, 2.5vw, 20px);
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    margin-bottom: 30px;
+  }
+
+  .rank-s { color: #ff0; text-shadow: 0 0 15px rgba(255,255,0,0.6); }
+  .rank-a { color: #f0f; text-shadow: 0 0 15px rgba(255,0,255,0.6); }
+  .rank-b { color: #0ff; text-shadow: 0 0 15px rgba(0,255,255,0.6); }
+  .rank-c { color: #888; text-shadow: 0 0 10px rgba(136,136,136,0.4); }
+
+  .results-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 16px;
+    width: 100%;
+    max-width: 500px;
+    margin-bottom: 30px;
+  }
+
+  .result-card {
+    background: rgba(10,10,25,0.8);
+    border: 1px solid rgba(0,255,255,0.15);
+    border-radius: 6px;
+    padding: 16px;
+  }
+
+  .result-card-label {
+    font-size: 9px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    color: rgba(0,255,255,0.4);
+    margin-bottom: 6px;
+  }
+
+  .result-card-value {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(20px, 4vw, 28px);
+    font-weight: 700;
+  }
+
+  .result-card-value.score-final { color: #ff0; text-shadow: 0 0 10px rgba(255,255,0,0.6); }
+  .result-card-value.accuracy-val { color: #0ff; text-shadow: 0 0 10px rgba(0,255,255,0.6); }
+  .result-card-value.streak-final { color: #0f0; text-shadow: 0 0 10px rgba(0,255,0,0.6); }
+  .result-card-value.time-final { color: #f0f; text-shadow: 0 0 10px rgba(255,0,255,0.6); }
+
+  /* Score Ring */
+  .score-ring-container {
+    position: relative;
+    width: 140px;
+    height: 140px;
+    margin-bottom: 30px;
+  }
+
+  .score-ring-container svg {
+    transform: rotate(-90deg);
+  }
+
+  .score-ring-bg {
+    fill: none;
+    stroke: rgba(255,255,255,0.05);
+    stroke-width: 8;
+  }
+
+  .score-ring-fill {
+    fill: none;
+    stroke-width: 8;
+    stroke-linecap: round;
+    transition: stroke-dashoffset 1.5s ease;
+  }
+
+  .score-ring-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 28px;
+    font-weight: 900;
+  }
+
+  .btn-restart {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    padding: 14px 40px;
+    background: linear-gradient(180deg, rgba(255,0,255,0.15), rgba(255,0,255,0.05));
+    border: 1px solid #f0f;
+    border-radius: 4px;
+    color: #f0f;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin: 6px;
+  }
+
+  .btn-restart:hover {
+    background: linear-gradient(180deg, rgba(255,0,255,0.3), rgba(255,0,255,0.1));
+    box-shadow: 0 0 25px rgba(255,0,255,0.4);
+    transform: scale(1.04);
+  }
+
+  .btn-review {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    text-transform: uppercase;
+    padding: 10px 30px;
+    background: linear-gradient(180deg, rgba(0,255,255,0.1), rgba(0,255,255,0.03));
+    border: 1px solid rgba(0,255,255,0.4);
+    border-radius: 4px;
+    color: #0ff;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin: 6px;
+  }
+
+  .btn-review:hover {
+    background: linear-gradient(180deg, rgba(0,255,255,0.2), rgba(0,255,255,0.08));
+    box-shadow: 0 0 20px rgba(0,255,255,0.3);
+    transform: scale(1.04);
+  }
+
+  /* Score popup animation */
+  .score-popup {
+    position: fixed;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 24px;
+    font-weight: 900;
+    pointer-events: none;
+    z-index: 100;
+    animation: scoreFloat 1s ease-out forwards;
+  }
+
+  @keyframes scoreFloat {
+    0% { opacity: 1; transform: translateY(0) scale(1); }
+    100% { opacity: 0; transform: translateY(-60px) scale(1.3); }
+  }
+
+  /* High score notice */
+  .highscore-notice {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    color: #ff0;
+    text-shadow: 0 0 10px rgba(255,255,0,0.6);
+    margin-bottom: 10px;
+    animation: hsPulse 1s ease-in-out infinite alternate;
+  }
+
+  @keyframes hsPulse {
+    from { opacity: 0.7; transform: scale(1); }
+    to { opacity: 1; transform: scale(1.05); }
+  }
+
+
+/* Cyberpunk arcade back link */
+#arcade-back-link {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  padding: 8px 16px;
+  color: rgba(0,255,255,0.6);
+  text-decoration: none;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  letter-spacing: 0.15em;
+  border: 1px solid rgba(0,255,255,0.3);
+  border-radius: 3px;
+  background: rgba(0,0,20,0.7);
+  backdrop-filter: blur(4px);
+  transition: all 0.25s ease;
+  z-index: 9999;
+  pointer-events: auto;
+}
+#arcade-back-link:hover {
+  color: #0ff;
+  border-color: #0ff;
+  box-shadow: 0 0 15px rgba(0,255,255,0.3), inset 0 0 15px rgba(0,255,255,0.1);
+  background: rgba(0,255,255,0.08);
+}
+</style>
+</head>
+<body>
+<a href="arcade.html" id="arcade-back-link"><< BACK TO ARCADE</a>
+
+<!-- Floating particles -->
+<div class="particles-container" id="particles"></div>
+
+<!-- Glitch lines -->
+<div class="glitch-line" style="top:20%"></div>
+<div class="glitch-line" style="top:50%"></div>
+<div class="glitch-line" style="top:80%"></div>
+
+<div id="game-wrapper">
+
+  <!-- ========== MENU SCREEN ========== -->
+  <div id="menu-screen">
+    <div class="title-main">CYBERPUNK<br>TRIVIA</div>
+    <div class="title-sub">// Neural Knowledge Assessment //</div>
+    <div class="neon-divider"></div>
+    <div class="menu-stats">
+      <div class="menu-stat">QUESTIONS: <span id="menu-question-count">20</span></div>
+      <div class="menu-stat">TIME/QUESTION: <span>15s</span></div>
+      <div class="menu-stat">HIGH SCORE: <span id="menu-highscore">0</span></div>
+    </div>
+    <button class="btn-start" id="btn-start">INITIATE</button>
+    <div class="menu-controls">
+      <kbd>1</kbd> <kbd>2</kbd> <kbd>3</kbd> <kbd>4</kbd> to select answer<br>
+      <kbd>Enter</kbd> to confirm & advance
+    </div>
+  </div>
+
+  <!-- ========== GAME SCREEN ========== -->
+  <div id="game-screen">
+    <div class="hud-bar">
+      <div class="hud-section">
+        <div class="hud-label">Score</div>
+        <div class="hud-value score" id="score-display">0</div>
+      </div>
+      <div class="hud-section">
+        <div class="hud-label">Question</div>
+        <div class="hud-value question-num" id="question-display">1/20</div>
+      </div>
+      <div class="hud-section">
+        <div class="hud-label">Time</div>
+        <div class="hud-value timer-val" id="timer-display">15</div>
+      </div>
+      <div class="hud-section">
+        <div class="hud-label">Streak</div>
+        <div class="hud-value streak-val" id="streak-display">0</div>
+      </div>
+    </div>
+
+    <div class="progress-track">
+      <div class="progress-fill" id="progress-fill" style="width: 0%"></div>
+    </div>
+
+    <div class="timer-track">
+      <div class="timer-fill" id="timer-fill"></div>
+    </div>
+
+    <div class="question-panel">
+      <div class="question-category" id="question-category">TECHNOLOGY</div>
+      <div class="question-text" id="question-text">Loading question...</div>
+    </div>
+
+    <div class="options-grid" id="options-grid">
+      <!-- Options injected dynamically -->
+    </div>
+
+    <div class="feedback-bar" id="feedback-bar">
+      <div>
+        <div id="feedback-text"></div>
+        <div class="explanation-text" id="explanation-text"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========== RESULTS SCREEN ========== -->
+  <div id="results-screen">
+    <div class="results-title" id="results-title">ASSESSMENT COMPLETE</div>
+    <div class="results-rank" id="results-rank">RANK: S</div>
+
+    <div class="score-ring-container" id="score-ring-container">
+      <svg width="140" height="140" viewBox="0 0 140 140">
+        <circle class="score-ring-bg" cx="70" cy="70" r="60"></circle>
+        <circle class="score-ring-fill" id="score-ring-fill" cx="70" cy="70" r="60"
+          stroke-dasharray="377" stroke-dashoffset="377"></circle>
+      </svg>
+      <div class="score-ring-text" id="score-ring-text">0%</div>
+    </div>
+
+    <div class="highscore-notice" id="highscore-notice" style="display:none;">★ NEW HIGH SCORE ★</div>
+
+    <div class="results-grid">
+      <div class="result-card">
+        <div class="result-card-label">Final Score</div>
+        <div class="result-card-value score-final" id="final-score">0</div>
+      </div>
+      <div class="result-card">
+        <div class="result-card-label">Accuracy</div>
+        <div class="result-card-value accuracy-val" id="final-accuracy">0%</div>
+      </div>
+      <div class="result-card">
+        <div class="result-card-label">Best Streak</div>
+        <div class="result-card-value streak-final" id="final-streak">0</div>
+      </div>
+      <div class="result-card">
+        <div class="result-card-label">Avg Time</div>
+        <div class="result-card-value time-final" id="final-time">0s</div>
+      </div>
+    </div>
+
+    <div>
+      <button class="btn-restart" id="btn-restart">RETRY</button>
+      <button class="btn-review" id="btn-menu">MAIN MENU</button>
+    </div>
+  </div>
+
+</div>
+
+<script>
+// ============================================================
+// TRIVIA QUESTIONS DATABASE
+// ============================================================
+// FORMAT: To add more questions, simply append to this array.
+// Each question needs: q (text), o (4 options array), a (index of correct answer 0-3),
+//                      c (category), e (explanation/fun fact)
+// ============================================================
+const QUESTIONS = [
+  {
+    q: "What year was the World Wide Web invented by Tim Berners-Lee?",
+    o: ["1985", "1989", "1993", "1976"],
+    a: 1,
+    c: "TECHNOLOGY",
+    e: "Tim Berners-Lee proposed the WWW in 1989 while at CERN. The first website went live in 1991."
+  },
+  {
+    q: "Which programming language was originally created by Brendan Eich in just 10 days?",
+    o: ["Python", "Java", "JavaScript", "C++"],
+    a: 2,
+    c: "PROGRAMMING",
+    e: "JavaScript was created in May 1995 by Brendan Eich at Netscape. It was originally called Mocha, then LiveScript."
+  },
+  {
+    q: "What does the acronym 'CPU' stand for?",
+    o: ["Central Process Unit", "Central Processing Unit", "Computer Personal Unit", "Central Program Utility"],
+    a: 1,
+    c: "HARDWARE",
+    e: "The Central Processing Unit executes instructions of a computer program. The first commercial microprocessor was Intel's 4004 in 1971."
+  },
+  {
+    q: "In what country was the first successful electronic digital computer (ENIAC) built?",
+    o: ["United Kingdom", "Germany", "United States", "Soviet Union"],
+    a: 2,
+    c: "HISTORY",
+    e: "ENIAC was built at the University of Pennsylvania and unveiled in 1945. It weighed 27 tons and used 17,468 vacuum tubes."
+  },
+  {
+    q: "What is the maximum theoretical data transfer rate of a single NVMe SSD lane compared to SATA III?",
+    o: ["Roughly the same", "About 2x faster", "About 4-5x faster", "About 10x faster"],
+    a: 3,
+    c: "HARDWARE",
+    e: "NVMe over PCIe Gen 3 delivers ~3.9 GB/s per lane vs SATA III's 600 MB/s — roughly 6-10x faster depending on generation."
+  },
+  {
+    q: "Which company created the first commercially successful personal computer, the Altair 8800?",
+    o: ["Apple", "Microsoft", "MITS", "IBM"],
+    a: 2,
+    c: "HISTORY",
+    e: "MITS released the Altair 8800 in 1975. It inspired Bill Gates and Paul Allen to write a BASIC interpreter for it, founding Microsoft."
+  },
+  {
+    q: "What does 'HTTP' stand for?",
+    o: ["HyperText Transfer Protocol", "High Tech Transfer Program", "HyperText Transmission Process", "Home Tool Transmitter Protocol"],
+    a: 0,
+    c: "NETWORKING",
+    e: "HTTP was first specified by Tim Berners-Lee in 1989 as the foundation for data communication on the World Wide Web."
+  },
+  {
+    q: "How many bits are in a byte?",
+    o: ["4", "6", "8", "16"],
+    a: 2,
+    c: "FUNDAMENTALS",
+    e: "A standard byte is 8 bits. This convention was solidified in the 1960s and 70s with ASCII encoding."
+  },
+  {
+    q: "Which scientist is credited with formulating the fundamental laws of Boolean algebra used in all digital computing?",
+    o: ["Alan Turing", "Charles Babbage", "George Boole", "John von Neumann"],
+    a: 2,
+    c: "FUNDAMENTALS",
+    e: "George Boole published 'The Laws of Thought' in 1854, establishing Boolean algebra — the mathematical foundation of all digital logic."
+  },
+  {
+    q: "What year was Linux kernel version 1.0 released by Linus Torvalds?",
+    o: ["1991", "1994", "1997", "2000"],
+    a: 1,
+    c: "TECHNOLOGY",
+    e: "Linux 1.0 was released on March 14, 1994. Torvalds first announced his project on Usenet in August 1991."
+  },
+  {
+    q: "What does 'RAM' stand for in computer hardware?",
+    o: ["Random Access Memory", "Read Access Module", "Rapid Application Memory", "Runtime Allocated Memory"],
+    a: 0,
+    c: "HARDWARE",
+    e: "Random Access Memory allows data to be read or written in roughly the same time regardless of physical location."
+  },
+  {
+    q: "Which search engine was originally called 'BackRub'?",
+    o: ["Yahoo", "Bing", "Google", "Ask Jeeves"],
+    a: 2,
+    c: "TECHNOLOGY",
+    e: "Larry Page and Sergey Brin named their project BackRub in 1996 because it analyzed backlinks. They renamed it Google in 1998."
+  },
+  {
+    q: "In networking, what does 'DNS' stand for?",
+    o: ["Domain Name System", "Digital Network Service", "Data Naming Standard", "Dynamic Network Server"],
+    a: 0,
+    c: "NETWORKING",
+    e: "The Domain Name System translates human-readable domain names (like wikipedia.org) into IP addresses. It was defined in RFC 882 in 1983."
+  },
+  {
+    q: "What is the name of the sorting algorithm that repeatedly swaps adjacent elements if they are in the wrong order?",
+    o: ["Quick Sort", "Merge Sort", "Heap Sort", "Bubble Sort"],
+    a: 3,
+    c: "ALGORITHMS",
+    e: "Bubble Sort gets its name because larger values 'bubble' to the top. It has O(n²) time complexity and is mainly used for teaching."
+  },
+  {
+    q: "Who is considered the inventor of Artificial Intelligence and organized the seminal Dartmouth Workshop in 1956?",
+    o: ["Alan Turing", "Marvin Minsky", "John McCarthy", "Claude Shannon"],
+    a: 2,
+    c: "AI / SCIENCE",
+    e: "John McCarthy coined the term 'Artificial Intelligence' and organized the Dartmouth Workshop in 1956, considered the founding event of AI as a field."
+  },
+  {
+    q: "What does 'SSL' stand for in web security?",
+    o: ["Secure Socket Layer", "Safe System Link", "Standard Security Protocol", "System State Lock"],
+    a: 0,
+    c: "SECURITY",
+    e: "Secure Sockets Layer was first developed by Netscape in 1994. It has been superseded by TLS but the name SSL persists in common usage."
+  },
+  {
+    q: "Which company developed the GraphQL query language?",
+    o: ["Google", "Microsoft", "Facebook (Meta)", "Twitter"],
+    a: 2,
+    c: "TECHNOLOGY",
+    e: "GraphQL was developed internally by Facebook in 2012 and open-sourced in 2015. It provides a more efficient alternative to REST APIs."
+  },
+  {
+    q: "What is the speed of light in a vacuum, approximately?",
+    o: ["150,000 km/s", "200,000 km/s", "300,000 km/s", "400,000 km/s"],
+    a: 2,
+    c: "SCIENCE",
+    e: "The speed of light in vacuum is exactly 299,792.458 km/s (approximately 300,000 km/s). This is a fundamental constant denoted by 'c'."
+  },
+  {
+    q: "In computer science, what time complexity does Big O notation 'O(1)' represent?",
+    o: ["Linear time", "Logarithmic time", "Constant time", "Exponential time"],
+    a: 2,
+    c: "ALGORITHMS",
+    e: "O(1) means constant time — the operation takes the same amount of time regardless of input size, like accessing an array by index."
+  },
+  {
+    q: "Which company was founded first: Amazon, eBay, or PayPal?",
+    o: ["PayPal (1998)", "eBay (1995)", "Amazon (1994)", "They were all founded in the same year"],
+    a: 2,
+    c: "TECHNOLOGY",
+    e: "Amazon was founded by Jeff Bezos in July 1994. eBay followed in September 1995 (as AuctionWeb), and PayPal in December 1998."
+  }
+];
+
+// ============================================================
+// GAME CONFIGURATION
+// ============================================================
+const CONFIG = {
+  TIME_PER_QUESTION: 15,       // seconds per question
+  BASE_POINTS: 100,            // base points for correct answer
+  TIME_BONUS_MULTIPLIER: 10,   // extra points per second remaining
+  STREAK_BONUS: 25,            // bonus per streak level
+  PASSING_SCORE: 60,           // percentage to pass
+};
+
+// ============================================================
+// GAME STATE
+// ============================================================
+let state = {
+  currentQuestion: 0,
+  score: 0,
+  streak: 0,
+  bestStreak: 0,
+  correctCount: 0,
+  totalTime: 0,
+  answeredQuestions: 0,
+  selectedOption: -1,
+  answered: false,
+  timerInterval: null,
+  timeLeft: CONFIG.TIME_PER_QUESTION,
+  questions: [],    // shuffled copy
+  highScore: parseInt(localStorage.getItem('cyberpunkTriviaHigh') || '0'),
+};
+
+// ============================================================
+// DOM REFERENCES
+// ============================================================
+const menuScreen = document.getElementById('menu-screen');
+const gameScreen = document.getElementById('game-screen');
+const resultsScreen = document.getElementById('results-screen');
+const scoreDisplay = document.getElementById('score-display');
+const questionDisplay = document.getElementById('question-display');
+const timerDisplay = document.getElementById('timer-display');
+const streakDisplay = document.getElementById('streak-display');
+const progressFill = document.getElementById('progress-fill');
+const timerFill = document.getElementById('timer-fill');
+const questionCategory = document.getElementById('question-category');
+const questionText = document.getElementById('question-text');
+const optionsGrid = document.getElementById('options-grid');
+const feedbackBar = document.getElementById('feedback-bar');
+const feedbackText = document.getElementById('feedback-text');
+const explanationText = document.getElementById('explanation-text');
+const menuHighscore = document.getElementById('menu-highscore');
+const menuQuestionCount = document.getElementById('menu-question-count');
+
+menuHighscore.textContent = state.highScore;
+menuQuestionCount.textContent = QUESTIONS.length;
+
+// ============================================================
+// AUDIO SYNTHESIS (Web Audio API)
+// ============================================================
+let audioCtx = null;
+function initAudio() {
+  if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+}
+
+function playTone(freq, dur, type='square', vol=0.06) {
+  if (!audioCtx) return;
+  try {
+    const osc = audioCtx.createOscillator();
+    const gain = audioCtx.createGain();
+    osc.type = type;
+    osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+    gain.gain.setValueAtTime(vol, audioCtx.currentTime);
+    gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + dur);
+    osc.connect(gain);
+    gain.connect(audioCtx.destination);
+    osc.start();
+    osc.stop(audioCtx.currentTime + dur);
+  } catch(e) {}
+}
+
+function sfxCorrect() {
+  playTone(523, 0.1, 'square', 0.06);
+  setTimeout(() => playTone(659, 0.1, 'square', 0.06), 80);
+  setTimeout(() => playTone(784, 0.15, 'square', 0.06), 160);
+}
+
+function sfxIncorrect() {
+  playTone(200, 0.3, 'sawtooth', 0.06);
+}
+
+function sfxClick() {
+  playTone(800, 0.04, 'square', 0.03);
+}
+
+function sfxHover() {
+  playTone(1200, 0.03, 'sine', 0.02);
+}
+
+function sfxTimeout() {
+  playTone(400, 0.15, 'triangle', 0.05);
+  setTimeout(() => playTone(300, 0.2, 'triangle', 0.05), 150);
+}
+
+function sfxResults() {
+  [523, 587, 659, 698, 784, 880].forEach((f, i) => {
+    setTimeout(() => playTone(f, 0.12, 'sine', 0.05), i * 80);
+  });
+}
+
+// ============================================================
+// UTILITY FUNCTIONS
+// ============================================================
+function shuffleArray(arr) {
+  const a = [...arr];
+  for (let i = a.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [a[i], a[j]] = [a[j], a[i]];
+  }
+  return a;
+}
+
+function showScreen(screen) {
+  menuScreen.classList.add('hidden');
+  gameScreen.classList.remove('active');
+  resultsScreen.classList.remove('active');
+  
+  switch(screen) {
+    case 'menu': menuScreen.classList.remove('hidden'); break;
+    case 'game': gameScreen.classList.add('active'); break;
+    case 'results': resultsScreen.classList.add('active'); break;
+  }
+}
+
+function showScorePopup(points, x, y, color) {
+  const popup = document.createElement('div');
+  popup.className = 'score-popup';
+  popup.textContent = `+${points}`;
+  popup.style.left = x + 'px';
+  popup.style.top = y + 'px';
+  popup.style.color = color;
+  popup.style.textShadow = `0 0 15px ${color}`;
+  document.body.appendChild(popup);
+  setTimeout(() => popup.remove(), 1000);
+}
+
+// ============================================================
+// GAME LOGIC
+// ============================================================
+function startGame() {
+  initAudio();
+  sfxClick();
+  
+  state.currentQuestion = 0;
+  state.score = 0;
+  state.streak = 0;
+  state.bestStreak = 0;
+  state.correctCount = 0;
+  state.totalTime = 0;
+  state.answeredQuestions = 0;
+  state.questions = shuffleArray(QUESTIONS);
+  
+  scoreDisplay.textContent = '0';
+  streakDisplay.textContent = '0';
+  
+  showScreen('game');
+  loadQuestion();
+  startTimer();
+}
+
+function loadQuestion() {
+  if (state.currentQuestion >= state.questions.length) {
+    endGame();
+    return;
+  }
+  
+  const q = state.questions[state.currentQuestion];
+  state.answered = false;
+  state.selectedOption = -1;
+  state.timeLeft = CONFIG.TIME_PER_QUESTION;
+  
+  // Update HUD
+  questionDisplay.textContent = `${state.currentQuestion + 1}/${state.questions.length}`;
+  progressFill.style.width = `${(state.currentQuestion / state.questions.length) * 100}%`;
+  timerDisplay.textContent = state.timeLeft;
+  timerFill.style.width = '100%';
+  timerFill.className = 'timer-fill';
+  
+  // Update question display
+  questionCategory.textContent = q.c;
+  questionText.textContent = q.q;
+  
+  // Hide feedback
+  feedbackBar.classList.remove('show');
+  feedbackBar.className = 'feedback-bar';
+  
+  // Build options
+  const keys = ['1', '2', '3', '4'];
+  optionsGrid.innerHTML = '';
+  q.o.forEach((opt, i) => {
+    const btn = document.createElement('button');
+    btn.className = 'option-btn';
+    btn.dataset.index = i;
+    btn.innerHTML = `<span class="option-key">${keys[i]}</span><span>${opt}</span>`;
+    btn.addEventListener('click', () => selectOption(i, btn));
+    btn.addEventListener('mouseenter', () => { if (!state.answered) sfxHover(); });
+    optionsGrid.appendChild(btn);
+  });
+}
+
+function selectOption(index, btnElement) {
+  if (state.answered) return;
+  state.answered = true;
+  state.selectedOption = index;
+  
+  clearInterval(state.timerInterval);
+  
+  const q = state.questions[state.currentQuestion];
+  const isCorrect = index === q.a;
+  const timeUsed = CONFIG.TIME_PER_QUESTION - state.timeLeft;
+  state.totalTime += timeUsed;
+  state.answeredQuestions++;
+  
+  // Disable all buttons
+  document.querySelectorAll('.option-btn').forEach(b => b.classList.add('disabled'));
+  
+  if (isCorrect) {
+    btnElement.classList.remove('disabled');
+    btnElement.classList.add('correct');
+    sfxCorrect();
+    
+    state.streak++;
+    if (state.streak > state.bestStreak) state.bestStreak = state.streak;
+    state.correctCount++;
+    
+    // Calculate score
+    const timeBonus = Math.floor(state.timeLeft * CONFIG.TIME_BONUS_MULTIPLIER);
+    const streakBonus = Math.min(state.streak, 5) * CONFIG.STREAK_BONUS;
+    const points = CONFIG.BASE_POINTS + timeBonus + streakBonus;
+    state.score += points;
+    
+    scoreDisplay.textContent = state.score;
+    streakDisplay.textContent = state.streak;
+    
+    // Score popup
+    const rect = btnElement.getBoundingClientRect();
+    showScorePopup(points, rect.left + rect.width/2 - 20, rect.top - 10, '#0f0');
+    
+    // Feedback
+    feedbackBar.classList.add('show', 'correct-fb');
+    feedbackText.textContent = `CORRECT — +${points} PTS`;
+    explanationText.textContent = q.e;
+    
+  } else {
+    btnElement.classList.remove('disabled');
+    btnElement.classList.add('incorrect');
+    sfxIncorrect();
+    
+    state.streak = 0;
+    streakDisplay.textContent = '0';
+    
+    // Show correct answer
+    const correctBtn = document.querySelector(`.option-btn[data-index="${q.a}"]`);
+    if (correctBtn) correctBtn.classList.add('show-correct');
+    
+    // Feedback
+    feedbackBar.classList.add('show', 'incorrect-fb');
+    feedbackText.textContent = `INCORRECT — ${q.o[q.a]}`;
+    explanationText.textContent = q.e;
+  }
+  
+  // Advance after delay
+  setTimeout(() => {
+    state.currentQuestion++;
+    loadQuestion();
+    startTimer();
+  }, 2500);
+}
+
+function handleTimeout() {
+  if (state.answered) return;
+  state.answered = true;
+  state.selectedOption = -1;
+  
+  const q = state.questions[state.currentQuestion];
+  state.totalTime += CONFIG.TIME_PER_QUESTION;
+  state.answeredQuestions++;
+  state.streak = 0;
+  streakDisplay.textContent = '0';
+  
+  sfxTimeout();
+  
+  // Disable all, show correct
+  document.querySelectorAll('.option-btn').forEach(b => b.classList.add('disabled'));
+  const correctBtn = document.querySelector(`.option-btn[data-index="${q.a}"]`);
+  if (correctBtn) correctBtn.classList.add('show-correct');
+  
+  feedbackBar.classList.add('show', 'timeout-fb');
+  feedbackText.textContent = `TIMEOUT — ${q.o[q.a]}`;
+  explanationText.textContent = q.e;
+  
+  setTimeout(() => {
+    state.currentQuestion++;
+    loadQuestion();
+    startTimer();
+  }, 2500);
+}
+
+function startTimer() {
+  clearInterval(state.timerInterval);
+  state.timeLeft = CONFIG.TIME_PER_QUESTION;
+  
+  state.timerInterval = setInterval(() => {
+    state.timeLeft--;
+    timerDisplay.textContent = Math.max(0, state.timeLeft);
+    
+    const pct = (state.timeLeft / CONFIG.TIME_PER_QUESTION) * 100;
+    timerFill.style.width = pct + '%';
+    
+    if (pct <= 20) {
+      timerFill.className = 'timer-fill critical';
+    } else if (pct <= 40) {
+      timerFill.className = 'timer-fill warning';
+    }
+    
+    if (state.timeLeft <= 0) {
+      clearInterval(state.timerInterval);
+      handleTimeout();
+    }
+  }, 1000);
+}
+
+function endGame() {
+  clearInterval(state.timerInterval);
+  sfxResults();
+  
+  const total = state.questions.length;
+  const pct = Math.round((state.correctCount / total) * 100);
+  const avgTime = state.answeredQuestions > 0 ? 
+    (state.totalTime / state.answeredQuestions).toFixed(1) : '0';
+  
+  // Determine rank
+  let rank, rankClass, titleText, titleClass;
+  if (pct >= 90) { rank = 'S'; rankClass = 'rank-s'; titleText = 'NEURAL MASTERY'; titleClass = 'pass'; }
+  else if (pct >= 70) { rank = 'A'; rankClass = 'rank-a'; titleText = 'CYBER ADEPT'; titleClass = 'pass'; }
+  else if (pct >= 50) { rank = 'B'; rankClass = 'rank-b'; titleText = 'GRID RUNNER'; titleClass = 'pass'; }
+  else { rank = 'C'; rankClass = 'rank-c'; titleText = 'SYSTEM FAILURE'; titleClass = 'fail'; }
+  
+  // High score check
+  const isNewHighScore = state.score > state.highScore;
+  if (isNewHighScore) {
+    state.highScore = state.score;
+    localStorage.setItem('cyberpunkTriviaHigh', state.score.toString());
+    menuHighscore.textContent = state.score;
+  }
+  
+  // Populate results
+  document.getElementById('results-title').textContent = titleText;
+  document.getElementById('results-title').className = `results-title ${titleClass}`;
+  document.getElementById('results-rank').textContent = `RANK: ${rank}`;
+  document.getElementById('results-rank').className = `results-rank ${rankClass}`;
+  document.getElementById('final-score').textContent = state.score.toLocaleString();
+  document.getElementById('final-accuracy').textContent = `${pct}%`;
+  document.getElementById('final-streak').textContent = state.bestStreak;
+  document.getElementById('final-time').textContent = `${avgTime}s`;
+  
+  // Score ring
+  const circumference = 2 * Math.PI * 60; // ~377
+  const offset = circumference - (pct / 100) * circumference;
+  const ringFill = document.getElementById('score-ring-fill');
+  const ringColor = pct >= 70 ? '#0f0' : pct >= 50 ? '#0ff' : '#f44';
+  ringFill.style.stroke = ringColor;
+  ringFill.style.filter = `drop-shadow(0 0 8px ${ringColor})`;
+  document.getElementById('score-ring-text').textContent = `${pct}%`;
+  document.getElementById('score-ring-text').style.color = ringColor;
+  
+  // Animate ring after showing
+  showScreen('results');
+  requestAnimationFrame(() => {
+    setTimeout(() => {
+      ringFill.style.strokeDashoffset = offset;
+    }, 100);
+  });
+  
+  // High score notice
+  document.getElementById('highscore-notice').style.display = isNewHighScore ? 'block' : 'none';
+}
+
+function goToMenu() {
+  sfxClick();
+  clearInterval(state.timerInterval);
+  menuHighscore.textContent = state.highScore;
+  showScreen('menu');
+}
+
+// ============================================================
+// KEYBOARD INPUT
+// ============================================================
+document.addEventListener('keydown', e => {
+  if (state.screen === 'game' || gameScreen.classList.contains('active')) {
+    const keyMap = { '1': 0, '2': 1, '3': 2, '4': 3 };
+    
+    if (!state.answered && keyMap.hasOwnProperty(e.key)) {
+      const idx = keyMap[e.key];
+      const btns = document.querySelectorAll('.option-btn');
+      if (btns[idx]) {
+        selectOption(idx, btns[idx]);
+      }
+    }
+  }
+});
+
+// ============================================================
+// PARTICLE SYSTEM
+// ============================================================
+function createParticles() {
+  const container = document.getElementById('particles');
+  for (let i = 0; i < 35; i++) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    p.style.left = Math.random() * 100 + '%';
+    p.style.animationDuration = (8 + Math.random() * 15) + 's';
+    p.style.animationDelay = (Math.random() * 12) + 's';
+    const size = 1 + Math.random() * 2.5;
+    p.style.width = size + 'px';
+    p.style.height = size + 'px';
+    const colors = ['#0ff', '#f0f', '#ff0', '#0f0'];
+    const c = colors[Math.floor(Math.random() * colors.length)];
+    p.style.background = c;
+    p.style.boxShadow = `0 0 6px ${c}, 0 0 12px ${c}`;
+    container.appendChild(p);
+  }
+}
+
+// ============================================================
+// GLITCH EFFECT
+// ============================================================
+function triggerGlitch() {
+  const lines = document.querySelectorAll('.glitch-line');
+  const line = lines[Math.floor(Math.random() * lines.length)];
+  const colors = ['#0ff', '#f0f', '#ff0'];
+  const c = colors[Math.floor(Math.random() * colors.length)];
+  
+  line.style.background = c;
+  line.style.boxShadow = `0 0 10px ${c}`;
+  line.style.opacity = '0.25';
+  
+  setTimeout(() => { line.style.opacity = '0'; }, 80);
+  setTimeout(triggerGlitch, 3000 + Math.random() * 6000);
+}
+
+// ============================================================
+// EVENT LISTENERS
+// ============================================================
+document.getElementById('btn-start').addEventListener('click', startGame);
+document.getElementById('btn-restart').addEventListener('click', startGame);
+document.getElementById('btn-menu').addEventListener('click', goToMenu);
+
+// Track current screen for keyboard
+Object.defineProperty(state, 'screen', {
+  get: function() {
+    if (menuScreen.classList.contains('hidden') === false) return 'menu';
+    if (gameScreen.classList.contains('active')) return 'game';
+    if (resultsScreen.classList.contains('active')) return 'results';
+    return 'menu';
+  }
+});
+
+// ============================================================
+// INITIALIZATION
+// ============================================================
+createParticles();
+setTimeout(triggerGlitch, 3000);
+showScreen('menu');
+</script>
+
+</body>
+</html>

@@ -1,0 +1,413 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Falldown</title>
+<style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+        overflow: hidden;
+        background: #000;
+        font-family: 'Arial', sans-serif;
+    }
+    canvas {
+        display: block;
+        position: fixed;
+        top: 0;
+        left: 0;
+        z-index: 999999;
+    }
+    #arcade-back-link {
+        position: fixed;
+        top: 12px;
+        right: 12px;
+        z-index: 1000000;
+        font-family: 'Arial', sans-serif;
+        font-size: 11px;
+        font-weight: 700;
+        color: rgba(0,255,255,0.5);
+        text-decoration: none;
+        letter-spacing: 0.15em;
+        padding: 6px 14px;
+        border: 1px solid rgba(0,255,255,0.15);
+        border-radius: 3px;
+        background: rgba(0,0,20,0.7);
+        backdrop-filter: blur(4px);
+        transition: all 0.25s ease;
+    }
+    #arcade-back-link:hover {
+        color: #0ff;
+        border-color: #0ff;
+        text-shadow: 0 0 8px #0ff;
+        box-shadow: 0 0 15px rgba(0,255,255,0.3), inset 0 0 15px rgba(0,255,255,0.1);
+        background: rgba(0,255,255,0.08);
+    }
+</style>
+</head>
+<body>
+<a href="arcade.html" id="arcade-back-link"><< BACK TO ARCADE</a>
+<canvas id="gameCanvas"></canvas>
+<script>
+(function() {
+    "use strict";
+
+    const config = {
+        gravity: 0.5,
+        moveSpeed: 8,
+        initialFloorSpeed: 1.5,
+        speedIncreaseRate: 0.05,
+        floorHeight: 25,
+        floorGap: 110,
+        minHoleSize: 50,
+        maxHoleSize: 150,
+        ballRadius: 12,
+        colors: {
+            bg: '#1a1a1a',
+            ball: '#00ff99',
+            floor: '#ff6666',
+            floorBreak: '#ffaa00',
+            text: '#ffffff',
+            ability: '#88ccff'
+        }
+    };
+
+    let canvas = document.getElementById('gameCanvas');
+    let ctx = canvas.getContext('2d');
+
+    // Set canvas to cover full window and handle resize
+    function resizeCanvas() {
+        canvas.width = window.innerWidth;
+        canvas.height = window.innerHeight;
+    }
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+
+    let state = {
+        running: true,
+        gameOver: false,
+        score: 0,
+        currentSpeed: config.initialSpeed
+    };
+
+    let player = {
+        x: 0,
+        y: 50,
+        vx: 0,
+        vy: 0,
+        radius: config.ballRadius
+    };
+
+    let floors = [];
+    let keys = { ArrowLeft: false, ArrowRight: false };
+
+    // New ability: charges for falling through floors
+    let abilityCharges = 3;
+    let fallThroughCount = 0; // How many more floors the player can pass through (0 = normal)
+    let fallThroughAlpha = 0; // Visual effect opacity for falling through
+
+    // Flash effect for gaining a new ability charge
+    let abilityFlash = 0;
+
+    function init() {
+        resizeCanvas();
+
+        state.running = true;
+        state.gameOver = false;
+        state.score = 0;
+        state.currentSpeed = config.initialFloorSpeed;
+
+        player.x = canvas.width / 2;
+        player.y = 50;
+        player.vx = 0;
+        player.vy = 0;
+
+        floors = [];
+        for (let i = 0; i < 4; i++) {
+            createFloor(canvas.height - (i * config.floorGap));
+        }
+
+        // Reset ability
+        abilityCharges = 3;
+        fallThroughCount = 0;
+        fallThroughAlpha = 0;
+        abilityFlash = 0;
+        state._recoveredOffBottom = false;
+        state._ridingFloor = false;
+    }
+
+    function createFloor(yPos) {
+        const margin = 50;
+        const holeWidth = Math.random() * (config.maxHoleSize - config.minHoleSize) + config.minHoleSize;
+        const maxHoleX = canvas.width - margin * 2 - holeWidth;
+        const holeX = Math.random() * maxHoleX + margin;
+
+        floors.push({
+            y: yPos,
+            holeX: holeX,
+            holeWidth: holeWidth,
+            active: true
+        });
+    }
+
+    window.addEventListener('keydown', (e) => {
+        if (e.code === 'ArrowLeft') keys.ArrowLeft = true;
+        if (e.code === 'ArrowRight') keys.ArrowRight = true;
+
+        if (e.code === 'Enter' && state.gameOver) {
+            init();
+        }
+
+        // Space bar: use fall-through ability
+        if (e.code === 'Space' && !state.gameOver && abilityCharges > 0 && fallThroughCount === 0) {
+            // Find the closest active floor below the player
+            let closestFloor = null;
+            let closestDist = Infinity;
+            for (let f of floors) {
+                if (!f.active) continue;
+                let dist = f.y - player.y;
+                if (dist > -20 && dist < 50 && dist < closestDist) {
+                    closestDist = dist;
+                    closestFloor = f;
+                }
+            }
+            if (closestFloor) {
+                fallThroughCount = 1; // Can pass through exactly 1 floor
+                fallThroughAlpha = 1;
+                abilityCharges--;
+                closestFloor.active = false; // Mark floor as broken
+            }
+        }
+    });
+
+    window.addEventListener('keyup', (e) => {
+        if (e.code === 'ArrowLeft') keys.ArrowLeft = false;
+        if (e.code === 'ArrowRight') keys.ArrowRight = false;
+    });
+
+    function update() {
+        if (!state.running || state.gameOver) return;
+
+        if (keys.ArrowLeft) player.x -= config.moveSpeed;
+        if (keys.ArrowRight) player.x += config.moveSpeed;
+
+        if (player.x < player.radius) player.x = player.radius;
+        if (player.x > canvas.width - player.radius) player.x = canvas.width - player.radius;
+
+        player.vy += config.gravity;
+        player.y += player.vy;
+
+        // Update ability flash effect
+        if (abilityFlash > 0) abilityFlash -= 0.02;
+
+        // Update fall-through visual effect
+        if (fallThroughAlpha > 0) fallThroughAlpha -= 0.03;
+
+        for (let f of floors) {
+            f.y -= state.currentSpeed;
+        }
+
+        // Generate new floors
+        if (floors.length > 0) {
+            const bottomFloor = floors[0];
+            if (bottomFloor.y < canvas.height - config.floorGap - 50) {
+                createFloor(bottomFloor.y + config.floorGap);
+            }
+        }
+
+        floors.sort((a, b) => b.y - a.y);
+
+        // Remove floors that have gone off screen and track score
+        let scored = false;
+        for (let i = floors.length - 1; i >= 0; i--) {
+            if (floors[i].y < -config.floorHeight) {
+                floors.splice(i, 1);
+                if (!scored) {
+                    state.score++;
+                    state.currentSpeed += config.speedIncreaseRate;
+                    scored = true;
+
+                    // New dynamic: every 5 levels, gain a charge
+                    if (state.score > 0 && state.score % 5 === 0) {
+                        abilityCharges++;
+                        abilityFlash = 1;
+                    }
+                }
+            }
+        }
+
+        // Floor collision detection
+        for (let f of floors) {
+            if (!f.active) continue;
+
+            const floorTop = f.y;
+            const playerBottom = player.y + player.radius;
+
+            if (playerBottom >= floorTop && playerBottom <= floorTop + 15 && player.vy >= 0) {
+                const playerLeft = player.x - player.radius;
+                const playerRight = player.x + player.radius;
+                const holeLeft = f.holeX;
+                const holeRight = f.holeX + f.holeWidth;
+                const inHole = (playerLeft > holeLeft - 5 && playerRight < holeRight + 5);
+
+                if (!inHole) {
+                    if (fallThroughCount > 0) {
+                        // Pass through this floor, decrement counter after passing
+                        fallThroughCount--;
+                        f.active = false; // Mark floor as broken
+                        // Don't stop falling - let player continue down
+                    } else {
+                        // Normal landing
+                        player.y = floorTop - player.radius;
+                        player.vy = 0;
+                        player.y -= state.currentSpeed;
+                    }
+                }
+            }
+        }
+
+        // Game over conditions (top of screen only)
+        if (player.y - player.radius < 0) {
+            state.gameOver = true;
+        }
+
+        // If player falls off bottom (without a fall-through charge or after using it), recover with new floor
+        if (player.y > canvas.height + 100 && !state._recoveredOffBottom) {
+            state._recoveredOffBottom = true;
+            state._ridingFloor = true;
+            fallThroughCount = 0;
+            fallThroughAlpha = 0;
+            // Create a fresh set of floors starting from just below visible area
+            floors = [];
+            const recoverY = canvas.height + 80;
+            for (let i = 0; i < 4; i++) {
+                createFloor(recoverY + (i * config.floorGap));
+            }
+            // Place player on top of the top floor and ride it up
+            player.y = recoverY - player.radius;
+            player.vy = 0;
+        }
+
+        // Handle riding the floor up after recovery
+        if (state._ridingFloor && state._recoveredOffBottom) {
+            if (floors.length > 0) {
+                // floors[0] is the lowest floor (sorted descending), which is our recovery floor
+                const rideFloor = floors[0];
+                player.y = rideFloor.y - player.radius;
+                player.vy = 0;
+            }
+            // Stop riding when floor moves back onto screen (player is back in playable area)
+            if (player.y < canvas.height - 100) {
+                state._ridingFloor = false;
+                state._recoveredOffBottom = false;
+            }
+        }
+    }
+
+    function draw() {
+        ctx.fillStyle = config.colors.bg;
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        if (state.gameOver) {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.85)';
+            ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+            ctx.fillStyle = config.colors.text;
+            ctx.font = 'bold 40px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('SQUISHED!', canvas.width / 2, canvas.height / 2 - 40);
+
+            ctx.font = '24px Arial';
+            ctx.fillText('Final Score: ' + state.score, canvas.width / 2, canvas.height / 2 + 10);
+
+            ctx.font = '18px Arial';
+            ctx.fillText('Press Enter to Restart', canvas.width / 2, canvas.height / 2 + 50);
+            return;
+        }
+
+        // Draw floors
+        for (let f of floors) {
+            if (!f.active) {
+                // Draw a faint broken floor effect
+                ctx.globalAlpha = 0.2;
+                ctx.fillStyle = config.colors.floorBreak;
+                ctx.fillRect(0, f.y, canvas.width, config.floorHeight);
+                ctx.globalAlpha = 1;
+                continue;
+            }
+
+            ctx.fillStyle = config.colors.floor;
+            ctx.fillRect(0, f.y, f.holeX, config.floorHeight);
+            ctx.fillRect(f.holeX + f.holeWidth, f.y, canvas.width - (f.holeX + f.holeWidth), config.floorHeight);
+
+            // Draw hole edges with a slight glow
+            ctx.fillStyle = '#ff9999';
+            ctx.fillRect(f.holeX - 2, f.y, 4, config.floorHeight);
+            ctx.fillRect(f.holeX + f.holeWidth - 2, f.y, 4, config.floorHeight);
+        }
+
+        // Draw player (ball)
+        ctx.fillStyle = config.colors.ball;
+        ctx.shadowColor = config.colors.ball;
+        ctx.shadowBlur = 15;
+        ctx.beginPath();
+        ctx.arc(player.x, player.y, player.radius, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.shadowBlur = 0;
+
+        // Draw fall-through visual effect
+        if (fallThroughAlpha > 0) {
+            ctx.globalAlpha = fallThroughAlpha * 0.5;
+            ctx.strokeStyle = config.ability;
+            ctx.lineWidth = 3;
+            ctx.beginPath();
+            ctx.arc(player.x, player.y, player.radius + 10, 0, Math.PI * 2);
+            ctx.stroke();
+            ctx.globalAlpha = 1;
+        }
+
+        // Draw HUD
+        ctx.fillStyle = config.colors.text;
+        ctx.font = 'bold 24px Arial';
+        ctx.textAlign = 'left';
+        ctx.fillText('Score: ' + state.score, 30, 40);
+
+        ctx.font = '16px Arial';
+        ctx.fillText('Speed: ' + state.currentSpeed.toFixed(1), 30, 70);
+
+        // Draw ability charges
+        ctx.fillStyle = config.ability;
+        ctx.font = 'bold 18px Arial';
+        ctx.fillText('⬇ Fall Through: ' + '◆'.repeat(abilityCharges), 30, 100);
+
+        // Draw ability flash effect
+        if (abilityFlash > 0) {
+            ctx.globalAlpha = abilityFlash;
+            ctx.fillStyle = config.ability;
+            ctx.font = 'bold 28px Arial';
+            ctx.textAlign = 'center';
+            ctx.fillText('+1 Fall Through Ability!', canvas.width / 2, 80);
+            ctx.globalAlpha = 1;
+        }
+
+        // Draw controls hint
+        ctx.fillStyle = 'rgba(255,255,255,0.4)';
+        ctx.font = '14px Arial';
+        ctx.textAlign = 'right';
+        ctx.fillText('Arrow Keys: Move | Space: Fall Through Floor', canvas.width - 20, canvas.height - 15);
+    }
+
+    function loop() {
+        update();
+        draw();
+        requestAnimationFrame(loop);
+    }
+
+    init();
+    loop();
+
+    console.log("Falldown Loaded! Arrow Keys to Move | Space: Fall Through Floor | Enter to Restart");
+})();
+</script>
+</body>
+</html>

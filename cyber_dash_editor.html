@@ -1,0 +1,868 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CYBER DASH - Level Editor</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Courier New', monospace;
+  }
+
+  #editorContainer {
+    position: relative;
+    width: 1100px;
+    height: 600px;
+    border: 2px solid #f0f;
+    box-shadow: 0 0 20px #f0f, 0 0 40px #f0f, inset 0 0 20px rgba(255, 0, 255, 0.1);
+    border-radius: 4px;
+    display: flex;
+  }
+
+  #toolbar {
+    width: 180px;
+    background: rgba(10, 0, 30, 0.95);
+    border-right: 2px solid #f0f;
+    padding: 15px;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    overflow-y: auto;
+  }
+
+  .toolbar-title {
+    color: #f0f;
+    font-size: 16px;
+    text-shadow: 0 0 10px #f0f, 0 0 20px #f0f;
+    text-align: center;
+    padding-bottom: 10px;
+    border-bottom: 1px solid rgba(255, 0, 255, 0.3);
+    margin-bottom: 5px;
+    letter-spacing: 2px;
+  }
+
+  .toolbar-section {
+    color: #0ff;
+    font-size: 11px;
+    text-shadow: 0 0 5px #0ff;
+    padding-top: 8px;
+    border-top: 1px solid rgba(0, 255, 255, 0.2);
+    letter-spacing: 1px;
+  }
+
+  .tool-btn {
+    padding: 10px 8px;
+    font-size: 12px;
+    font-family: 'Courier New', monospace;
+    background: rgba(0, 0, 30, 0.8);
+    color: #0ff;
+    border: 1px solid rgba(0, 255, 255, 0.4);
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    transition: all 0.2s;
+    border-radius: 3px;
+    text-align: left;
+  }
+
+  .tool-btn:hover {
+    background: rgba(0, 255, 255, 0.1);
+    box-shadow: 0 0 10px rgba(0, 255, 255, 0.3);
+  }
+
+  .tool-btn.active {
+    background: rgba(255, 0, 255, 0.15);
+    border-color: #f0f;
+    color: #f0f;
+    box-shadow: 0 0 15px rgba(255, 0, 255, 0.4);
+  }
+
+  .tool-btn.danger {
+    color: #f04;
+    border-color: rgba(255, 0, 68, 0.4);
+  }
+
+  .tool-btn.danger:hover {
+    background: rgba(255, 0, 68, 0.1);
+    box-shadow: 0 0 10px rgba(255, 0, 68, 0.3);
+  }
+
+  .tool-btn.success {
+    color: #0f0;
+    border-color: rgba(0, 255, 0, 0.4);
+  }
+
+  .tool-btn.success:hover {
+    background: rgba(0, 255, 0, 0.1);
+    box-shadow: 0 0 10px rgba(0, 255, 0, 0.3);
+  }
+
+  #canvasWrapper {
+    flex: 1;
+    position: relative;
+    overflow: hidden;
+  }
+
+  canvas {
+    display: block;
+    background: #0a0a1a;
+    cursor: crosshair;
+  }
+
+  #statusBar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    height: 30px;
+    background: rgba(5, 0, 20, 0.9);
+    border-top: 1px solid rgba(0, 255, 255, 0.3);
+    display: flex;
+    align-items: center;
+    padding: 0 15px;
+    gap: 20px;
+    font-size: 11px;
+    color: #0ff;
+    text-shadow: 0 0 5px #0ff;
+  }
+
+  #levelNameInput {
+    background: transparent;
+    border: none;
+    border-bottom: 1px solid rgba(0, 255, 255, 0.5);
+    color: #f0f;
+    font-family: 'Courier New', monospace;
+    font-size: 13px;
+    padding: 4px 8px;
+    width: 200px;
+    outline: none;
+  }
+
+  #levelNameInput::placeholder {
+    color: rgba(255, 0, 255, 0.4);
+  }
+
+  #levelNameInput:focus {
+    border-bottom-color: #f0f;
+  }
+
+  .saved-levels {
+    margin-top: 5px;
+  }
+
+  .saved-level-btn {
+    padding: 6px 8px;
+    font-size: 10px;
+    font-family: 'Courier New', monospace;
+    background: rgba(0, 0, 30, 0.6);
+    color: #ff0;
+    border: 1px solid rgba(255, 255, 0, 0.3);
+    cursor: pointer;
+    width: 100%;
+    text-align: left;
+    transition: all 0.2s;
+    border-radius: 2px;
+    margin-bottom: 3px;
+  }
+
+  .saved-level-btn:hover {
+    background: rgba(255, 255, 0, 0.1);
+  }
+
+  #modal {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background: rgba(0, 0, 10, 0.9);
+    z-index: 100;
+    justify-content: center;
+    align-items: center;
+    flex-direction: column;
+  }
+
+  #modal.show {
+    display: flex;
+  }
+
+  #modal h2 {
+    color: #0ff;
+    text-shadow: 0 0 15px #0ff;
+    margin-bottom: 20px;
+    letter-spacing: 3px;
+  }
+
+  #modal p {
+    color: #f0f;
+    margin-bottom: 20px;
+    font-size: 14px;
+  }
+
+  #playInGameBtn {
+    padding: 15px 40px;
+    font-size: 18px;
+    font-family: 'Courier New', monospace;
+    background: transparent;
+    color: #0f0;
+    border: 2px solid #0f0;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    box-shadow: 0 0 15px #0f0, inset 0 0 15px rgba(0, 255, 0, 0.1);
+    transition: all 0.3s;
+    border-radius: 4px;
+    margin-top: 10px;
+  }
+
+  #playInGameBtn:hover {
+    background: rgba(0, 255, 0, 0.15);
+    box-shadow: 0 0 30px #0f0, 0 0 60px #0f0;
+    transform: scale(1.05);
+  }
+
+  .scanline {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 15;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.03) 0px,
+      rgba(0, 0, 0, 0.03) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  }
+
+  #helpText {
+    position: absolute;
+    top: 10px;
+    left: 50%;
+    transform: translateX(-50%);
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 11px;
+    pointer-events: none;
+    letter-spacing: 1px;
+    z-index: 10;
+  }
+
+
+/* Cyberpunk arcade back link */
+#arcade-back-link {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  padding: 8px 16px;
+  color: rgba(0,255,255,0.6);
+  text-decoration: none;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  letter-spacing: 0.15em;
+  border: 1px solid rgba(0,255,255,0.3);
+  border-radius: 3px;
+  background: rgba(0,0,20,0.7);
+  backdrop-filter: blur(4px);
+  transition: all 0.25s ease;
+  z-index: 9999;
+  pointer-events: auto;
+}
+#arcade-back-link:hover {
+  color: #0ff;
+  border-color: #0ff;
+  box-shadow: 0 0 15px rgba(0,255,255,0.3), inset 0 0 15px rgba(0,255,255,0.1);
+  background: rgba(0,255,255,0.08);
+}
+</style>
+</head>
+<body>
+<a href="arcade.html" id="arcade-back-link"><< BACK TO ARCADE</a>
+<div id="editorContainer">
+  <div id="toolbar">
+    <div class="toolbar-title">EDITOR</div>
+
+    <div class="toolbar-section">OBSTACLES</div>
+    <button class="tool-btn active" data-tool="spike">▲ Spike</button>
+    <button class="tool-btn" data-tool="block">■ Block</button>
+    <button class="tool-btn" data-tool="double_spike">▲▲ Dbl Spike</button>
+    <button class="tool-btn" data-tool="platform">━ Platform</button>
+    <button class="tool-btn" data-tool="laser">│ Laser</button>
+
+    <div class="toolbar-section">TOOLS</div>
+    <button class="tool-btn" data-tool="erase">✕ Erase</button>
+    <button class="tool-btn" data-tool="move">→ Move Mode</button>
+
+    <div class="toolbar-section">ACTIONS</div>
+    <button class="tool-btn success" id="saveBtn">💾 Save Level</button>
+    <button class="tool-btn" id="clearBtn">☐ Clear All</button>
+    <button class="tool-btn danger" id="testBtn">▶ Test Level</button>
+
+    <div class="toolbar-section">LOAD LEVEL</div>
+    <div class="saved-levels" id="savedLevels"></div>
+  </div>
+
+  <div id="canvasWrapper">
+    <canvas id="editorCanvas" width="900" height="570"></canvas>
+    <div class="scanline"></div>
+    <div id="helpText">CLICK TO PLACE • SCROLL TO PAN • CTRL+CLICK TO DELETE</div>
+  </div>
+
+  <div id="statusBar">
+    <span>LEVEL: <input type="text" id="levelNameInput" placeholder="My Custom Level" maxlength="30"></span>
+    <span>POS: (<span id="posX">0</span>, <span id="posY">0</span>)</span>
+    <span>BLOCKS: <span id="blockCount">0</span></span>
+    <span>LENGTH: <span id="levelLength">0</span>m</span>
+  </div>
+
+  <div id="modal">
+    <h2>LEVEL SAVED</h2>
+    <p id="modalText">Level "My Custom Level" saved successfully!</p>
+    <button id="playInGameBtn">PLAY IN GAME</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('editorCanvas');
+const ctx = canvas.getContext('2d');
+
+// Editor state
+let currentTool = 'spike';
+let gridBlocks = [];
+let cameraX = 0;
+let isPanning = false;
+let lastMouseX = 0;
+let gridSize = 30;
+const GROUND_Y = 380;
+
+// Obstacle templates
+const obstacleTemplates = {
+  spike: { width: 1, height: 1, color: '#f04', symbol: '▲' },
+  block: { width: 1, height: 2, color: '#f0f', symbol: '■' },
+  double_spike: { width: 2, height: 1, color: '#f04', symbol: '▲▲' },
+  platform: { width: 3, height: 1, color: '#0f0', symbol: '━' },
+  laser: { width: 1, height: 2, color: '#f80', symbol: '│' }
+};
+
+// Load saved levels from localStorage
+function getSavedLevels() {
+  try {
+    return JSON.parse(localStorage.getItem('cyberDashLevels') || '[]');
+  } catch {
+    return [];
+  }
+}
+
+function saveLevels(levels) {
+  localStorage.setItem('cyberDashLevels', JSON.stringify(levels));
+}
+
+// Update saved levels list
+function updateSavedLevelsList() {
+  const container = document.getElementById('savedLevels');
+  const levels = getSavedLevels();
+  container.innerHTML = '';
+
+  if (levels.length === 0) {
+    container.innerHTML = '<span style="color:rgba(255,255,0,0.3);font-size:10px;">No saved levels</span>';
+    return;
+  }
+
+  levels.forEach((level, idx) => {
+    const btn = document.createElement('button');
+    btn.className = 'saved-level-btn';
+    btn.textContent = level.name || ('Level ' + (idx + 1));
+    btn.addEventListener('click', () => loadLevel(idx));
+    container.appendChild(btn);
+  });
+}
+
+// Track which level ID we're currently editing (for save)
+let editingLevelId = null;
+
+function loadLevel(index) {
+  const levels = getSavedLevels();
+  if (levels[index]) {
+    gridBlocks = JSON.parse(JSON.stringify(levels[index].blocks));
+    document.getElementById('levelNameInput').value = levels[index].name || '';
+    editingLevelId = levels[index].id;
+    updateStatusBar();
+    render();
+  }
+}
+
+function generateUniqueName(baseName) {
+  const levels = getSavedLevels();
+  const existingNames = levels.map(l => l.name.toLowerCase());
+  
+  // Check if base name is unique
+  if (!existingNames.includes(baseName.toLowerCase())) {
+    return baseName;
+  }
+  
+  // Find next available number
+  let counter = 2;
+  while (existingNames.includes((baseName + ' ' + counter).toLowerCase())) {
+    counter++;
+  }
+  return baseName + ' ' + counter;
+}
+
+function saveCurrentLevel() {
+  const name = document.getElementById('levelNameInput').value.trim();
+  const levels = getSavedLevels();
+  
+  const levelData = {
+    id: editingLevelId || ('lvl_' + Date.now()),
+    name: name || generateUniqueName('Custom Level'),
+    blocks: JSON.parse(JSON.stringify(gridBlocks)),
+    timestamp: Date.now()
+  };
+
+  // Check if editing existing level by ID
+  if (editingLevelId) {
+    const existingIdx = levels.findIndex(l => l.id === editingLevelId);
+    if (existingIdx >= 0) {
+      levels[existingIdx] = levelData;
+    } else {
+      levels.push(levelData);
+    }
+  } else {
+    // New level
+    levels.push(levelData);
+  }
+
+  saveLevels(levels);
+  updateSavedLevelsList();
+
+  // Now track this level's ID for future edits
+  editingLevelId = levelData.id;
+
+  // Show modal
+  document.getElementById('modalText').textContent = `"${levelData.name}" saved! (${gridBlocks.length} blocks)`;
+  document.getElementById('modal').classList.add('show');
+
+  return levelData;
+}
+
+function clearAll() {
+  if (confirm('Clear all blocks?')) {
+    gridBlocks = [];
+    updateStatusBar();
+    render();
+  }
+}
+
+// Play in main game
+function playInGame(levelData) {
+  localStorage.setItem('cyberDashCurrentLevel', JSON.stringify(levelData));
+  const mainGame = window.open('cyber_dash.html', '_blank');
+  if (!mainGame) {
+    // Popup blocked, redirect current window
+    window.location.href = 'cyber_dash.html';
+  }
+}
+
+document.getElementById('playInGameBtn').addEventListener('click', () => {
+  document.getElementById('modal').classList.remove('show');
+  const levelData = {
+    name: document.getElementById('levelNameInput').value.trim() || 'Custom Level',
+    blocks: JSON.parse(JSON.stringify(gridBlocks))
+  };
+  playInGame(levelData);
+});
+
+// Tool selection
+document.querySelectorAll('[data-tool]').forEach(btn => {
+  btn.addEventListener('click', () => {
+    document.querySelectorAll('[data-tool]').forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    currentTool = btn.dataset.tool;
+  });
+});
+
+document.getElementById('saveBtn').addEventListener('click', saveCurrentLevel);
+document.getElementById('clearBtn').addEventListener('click', clearAll);
+
+// Test level
+document.getElementById('testBtn').addEventListener('click', () => {
+  if (gridBlocks.length === 0) {
+    alert('Place some blocks first!');
+    return;
+  }
+  testLevel();
+});
+
+// Grid snapping
+function snapToGrid(val) {
+  return Math.round(val / gridSize) * gridSize;
+}
+
+// Get grid position from mouse event
+function getGridPos(e) {
+  const rect = canvas.getBoundingClientRect();
+  const x = e.clientX - rect.left + cameraX;
+  const y = e.clientY - rect.top;
+  return {
+    gridX: Math.floor(x / gridSize),
+    gridY: Math.floor(y / gridSize),
+    pixelX: snapToGrid(x),
+    pixelY: snapToGrid(y)
+  };
+}
+
+// Place or erase obstacle
+function placeObstacle(gridPos, erase = false) {
+  if (erase || currentTool === 'erase') {
+    // Remove block at position
+    gridBlocks = gridBlocks.filter(b => !(b.gridX === gridPos.gridX && b.gridY === gridPos.gridY));
+  } else {
+    // Check if block already exists at this position
+    const existing = gridBlocks.find(b => b.gridX === gridPos.gridX && b.gridY === gridPos.gridY);
+    if (existing) return;
+
+    const template = obstacleTemplates[currentTool];
+    const block = {
+      tool: currentTool,
+      gridX: gridPos.gridX,
+      gridY: gridPos.gridY,
+      pixelX: gridPos.pixelX,
+      pixelY: gridPos.pixelY
+    };
+
+    // Snap to ground if near ground level
+    if (gridPos.pixelY + gridSize > GROUND_Y - 10 && currentTool !== 'platform') {
+      block.pixelY = GROUND_Y - template.height * gridSize;
+      block.gridY = Math.floor(block.pixelY / gridSize);
+    }
+
+    gridBlocks.push(block);
+  }
+
+  updateStatusBar();
+  render();
+}
+
+// Mouse events
+let isDragging = false;
+let dragStartX = 0;
+
+canvas.addEventListener('mousedown', (e) => {
+  const gridPos = getGridPos(e);
+
+  if (currentTool === 'move') {
+    isPanning = true;
+    lastMouseX = e.clientX;
+    return;
+  }
+
+  if (e.ctrlKey || e.button === 2) {
+    // Ctrl+click or right click = erase
+    placeObstacle(gridPos, true);
+  } else {
+    placeObstacle(gridPos);
+  }
+});
+
+canvas.addEventListener('mousemove', (e) => {
+  const gridPos = getGridPos(e);
+  document.getElementById('posX').textContent = gridPos.pixelX;
+  document.getElementById('posY').textContent = gridPos.pixelY;
+
+  if (isPanning) {
+    const dx = e.clientX - lastMouseX;
+    cameraX += dx;
+    lastMouseX = e.clientX;
+    render();
+  }
+});
+
+canvas.addEventListener('mouseup', () => {
+  isPanning = false;
+});
+
+canvas.addEventListener('mouseleave', () => {
+  isPanning = false;
+});
+
+canvas.addEventListener('contextmenu', (e) => e.preventDefault());
+
+// Scroll to pan
+canvas.addEventListener('wheel', (e) => {
+  e.preventDefault();
+  cameraX += e.deltaY > 0 ? 50 : -50;
+  render();
+});
+
+// Update status bar
+function updateStatusBar() {
+  document.getElementById('blockCount').textContent = gridBlocks.length;
+  if (gridBlocks.length > 0) {
+    const maxX = Math.max(...gridBlocks.map(b => b.gridX));
+    document.getElementById('levelLength').textContent = Math.floor(maxX * gridSize / 10);
+  } else {
+    document.getElementById('levelLength').textContent = '0';
+  }
+}
+
+// Draw neon obstacle preview
+function drawEditorObstacle(block, x, y) {
+  const template = obstacleTemplates[block.tool];
+  if (!template) return;
+
+  const w = template.width * gridSize;
+  const h = template.height * gridSize;
+  const color = template.color;
+
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 12;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.globalAlpha = 0.8;
+
+  switch (block.tool) {
+    case 'spike':
+      ctx.beginPath();
+      ctx.moveTo(x, y + h);
+      ctx.lineTo(x + w / 2, y);
+      ctx.lineTo(x + w, y + h);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.15;
+      ctx.fill();
+      break;
+
+    case 'block':
+      ctx.strokeRect(x, y, w, h);
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.1;
+      ctx.fillRect(x, y, w, h);
+      // Inner detail
+      ctx.globalAlpha = 0.3;
+      ctx.strokeRect(x + 4, y + 4, w - 8, h - 8);
+      break;
+
+    case 'double_spike':
+      const sw = w / 2;
+      ctx.beginPath();
+      ctx.moveTo(x, y + h);
+      ctx.lineTo(x + sw / 2, y);
+      ctx.lineTo(x + sw, y + h);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x + sw, y + h);
+      ctx.lineTo(x + sw + sw / 2, y);
+      ctx.lineTo(x + w, y + h);
+      ctx.closePath();
+      ctx.stroke();
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.15;
+      ctx.fill();
+      break;
+
+    case 'platform':
+      ctx.strokeRect(x, y, w, gridSize);
+      ctx.fillStyle = color;
+      ctx.globalAlpha = 0.1;
+      ctx.fillRect(x, y, w, gridSize);
+      // Support lines
+      ctx.globalAlpha = 0.2;
+      ctx.lineWidth = 1;
+      for (let px = x + gridSize / 2; px < x + w; px += gridSize) {
+        ctx.beginPath();
+        ctx.moveTo(px, y + gridSize);
+        ctx.lineTo(px, GROUND_Y);
+        ctx.stroke();
+      }
+      break;
+
+    case 'laser':
+      ctx.strokeStyle = color;
+      ctx.lineWidth = 3;
+      ctx.beginPath();
+      ctx.moveTo(x + gridSize / 2, y);
+      ctx.lineTo(x + gridSize / 2, y + h);
+      ctx.stroke();
+      // Emitter nodes
+      ctx.fillStyle = color;
+      ctx.fillRect(x - 3, y, gridSize + 6, 4);
+      ctx.fillRect(x - 3, y + h - 4, gridSize + 6, 4);
+      break;
+  }
+
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+}
+
+// Render the editor
+function render() {
+  ctx.save();
+
+  // Clear
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+  const offsetX = -cameraX;
+
+  // Background gradient
+  const gradient = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
+  gradient.addColorStop(0, 'rgba(10, 0, 30, 1)');
+  gradient.addColorStop(1, 'rgba(5, 5, 20, 1)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, canvas.width, GROUND_Y);
+
+  // Grid
+  ctx.strokeStyle = 'rgba(0, 255, 255, 0.06)';
+  ctx.lineWidth = 1;
+
+  const startCol = Math.floor(cameraX / gridSize);
+  const endCol = startCol + Math.ceil(canvas.width / gridSize) + 1;
+
+  for (let col = startCol; col <= endCol; col++) {
+    const x = col * gridSize + offsetX;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, GROUND_Y);
+    ctx.stroke();
+  }
+
+  for (let row = 0; row < Math.ceil(GROUND_Y / gridSize); row++) {
+    const y = row * gridSize;
+    ctx.beginPath();
+    ctx.moveTo(0, y);
+    ctx.lineTo(canvas.width, y);
+    ctx.stroke();
+  }
+
+  // Ground line
+  ctx.shadowColor = '#0ff';
+  ctx.shadowBlur = 15;
+  ctx.strokeStyle = '#0ff';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(0, GROUND_Y);
+  ctx.lineTo(canvas.width, GROUND_Y);
+  ctx.stroke();
+
+  // Ground fill
+  const groundGrad = ctx.createLinearGradient(0, GROUND_Y, 0, canvas.height);
+  groundGrad.addColorStop(0, 'rgba(0, 255, 255, 0.03)');
+  groundGrad.addColorStop(1, 'rgba(0, 0, 50, 0.1)');
+  ctx.fillStyle = groundGrad;
+  ctx.fillRect(0, GROUND_Y, canvas.width, canvas.height - GROUND_Y);
+
+  ctx.shadowBlur = 0;
+
+  // Player start indicator
+  const playerX = 120 + offsetX;
+  ctx.shadowColor = '#0ff';
+  ctx.shadowBlur = 20;
+  ctx.strokeStyle = '#0ff';
+  ctx.lineWidth = 2;
+  ctx.globalAlpha = 0.6;
+  ctx.strokeRect(playerX - gridSize / 2, GROUND_Y - gridSize, gridSize, gridSize);
+  ctx.fillStyle = '#0ff';
+  ctx.globalAlpha = 0.15;
+  ctx.fillRect(playerX - gridSize / 2, GROUND_Y - gridSize, gridSize, gridSize);
+
+  // Diamond symbol
+  ctx.globalAlpha = 0.6;
+  ctx.strokeStyle = '#fff';
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  const ds = 8;
+  const pcx = playerX;
+  const pcy = GROUND_Y - gridSize / 2;
+  ctx.moveTo(pcx, pcy - ds);
+  ctx.lineTo(pcx + ds, pcy);
+  ctx.lineTo(pcx, pcy + ds);
+  ctx.lineTo(pcx - ds, pcy);
+  ctx.closePath();
+  ctx.stroke();
+
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+
+  // Draw placed obstacles
+  gridBlocks.forEach(block => {
+    const x = block.pixelX + offsetX;
+    const y = block.pixelY;
+    if (x > -100 && x < canvas.width + 100) {
+      drawEditorObstacle(block, x, y);
+    }
+  });
+
+  // Draw placement preview at mouse position (if in place mode)
+  // Distance marker
+  ctx.fillStyle = 'rgba(0, 255, 255, 0.3)';
+  ctx.font = '10px Courier New';
+  for (let dist = 100; dist < canvas.width - offsetX; dist += 200) {
+    const x = dist + offsetX;
+    if (x > 0 && x < canvas.width) {
+      ctx.fillText(Math.floor(dist / 10) + 'm', x, GROUND_Y + 15);
+      ctx.strokeStyle = 'rgba(0, 255, 255, 0.1)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.moveTo(x, GROUND_Y);
+      ctx.lineTo(x, GROUND_Y + 8);
+      ctx.stroke();
+    }
+  }
+
+  ctx.restore();
+}
+
+// Test level (simple preview animation)
+function testLevel() {
+  const testObstacles = gridBlocks.map(b => {
+    const template = obstacleTemplates[b.tool];
+    return {
+      x: b.pixelX,
+      y: b.pixelY,
+      width: template.width * gridSize,
+      height: template.height * gridSize,
+      type: b.tool,
+      color: template.color
+    };
+  });
+
+  // Save and open main game with test level
+  const levelData = {
+    name: 'Test Level',
+    blocks: gridBlocks
+  };
+  playInGame(levelData);
+}
+
+// Initialize
+updateSavedLevelsList();
+render();
+
+// Check for clipboard paste
+document.addEventListener('paste', (e) => {
+  try {
+    const data = JSON.parse(e.clipboardData.getData('text/plain'));
+    if (data.blocks && Array.isArray(data.blocks)) {
+      gridBlocks = data.blocks;
+      document.getElementById('levelNameInput').value = data.name || '';
+      updateStatusBar();
+      render();
+    }
+  } catch {}
+});
+</script>
+</body>
+</html>

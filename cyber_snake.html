@@ -1,0 +1,1108 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CYBER SNAKE // Two Player Neon Warfare</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #0a0a12;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    min-height: 100vh;
+    font-family: 'Share Tech Mono', monospace;
+    color: #e0e0ff;
+    overflow: hidden;
+    user-select: none;
+  }
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: 
+      linear-gradient(rgba(0,255,255,0.015) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,255,0.015) 1px, transparent 1px);
+    background-size: 40px 40px;
+    pointer-events: none;
+    z-index: 0;
+  }
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg, transparent, transparent 2px, rgba(0,0,0,0.06) 2px, rgba(0,0,0,0.06) 4px
+    );
+    pointer-events: none;
+    z-index: 100;
+  }
+  #game-container {
+    position: relative;
+    z-index: 1;
+  }
+  canvas {
+    display: block;
+    border-radius: 2px;
+  }
+  #ui-overlay {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    pointer-events: none;
+    z-index: 10;
+    display: flex;
+    flex-direction: column;
+  }
+  .hud {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 20px;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+  }
+  .hud-section {
+    display: flex;
+    gap: 24px;
+    align-items: center;
+  }
+  .hud-center {
+    position: absolute;
+    left: 50%;
+    transform: translateX(-50%);
+    text-align: center;
+  }
+  .hud-label {
+    color: rgba(255,255,255,0.35);
+    font-size: 8px;
+    letter-spacing: 0.15em;
+    display: block;
+  }
+  .hud-value {
+    font-weight: 700;
+    font-size: 16px;
+  }
+  .p1-color { color: #0ff; text-shadow: 0 0 8px rgba(0,255,255,0.6); }
+  .p2-color { color: #f0f; text-shadow: 0 0 8px rgba(255,0,255,0.6); }
+  .title-color { color: #ff0; text-shadow: 0 0 8px rgba(255,255,0,0.6); font-size: 10px; letter-spacing: 0.3em; }
+
+  /* Menu Screen */
+  #menu-screen {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: rgba(5,5,15,0.94);
+    z-index: 50;
+    pointer-events: auto;
+  }
+  #menu-screen.hidden { display: none; }
+  .menu-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 48px;
+    font-weight: 900;
+    letter-spacing: 0.15em;
+    margin-bottom: 8px;
+    background: linear-gradient(90deg, #0ff, #f0f);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: drop-shadow(0 0 20px rgba(0,255,255,0.4)) drop-shadow(0 0 40px rgba(255,0,255,0.3));
+  }
+  .menu-subtitle {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 13px;
+    color: rgba(255,255,0,0.6);
+    letter-spacing: 0.4em;
+    text-transform: uppercase;
+    margin-bottom: 50px;
+  }
+  .menu-controls {
+    display: flex;
+    gap: 80px;
+    margin-bottom: 50px;
+  }
+  .control-panel {
+    text-align: center;
+    padding: 24px 36px;
+    border-radius: 4px;
+    position: relative;
+  }
+  .control-panel.p1-panel {
+    border: 1px solid rgba(0,255,255,0.2);
+    background: rgba(0,255,255,0.03);
+  }
+  .control-panel.p2-panel {
+    border: 1px solid rgba(255,0,255,0.2);
+    background: rgba(255,0,255,0.03);
+  }
+  .control-panel h3 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 16px;
+    margin-bottom: 16px;
+    letter-spacing: 0.1em;
+  }
+  .p1-panel h3 { color: #0ff; text-shadow: 0 0 10px rgba(0,255,255,0.5); }
+  .p2-panel h3 { color: #f0f; text-shadow: 0 0 10px rgba(255,0,255,0.5); }
+  .key-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 36px);
+    grid-template-rows: repeat(2, 36px);
+    gap: 4px;
+    justify-content: center;
+    margin-top: 12px;
+  }
+  .key {
+    width: 36px;
+    height: 36px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    border-radius: 3px;
+    border: 1px solid rgba(255,255,255,0.15);
+    background: rgba(255,255,255,0.03);
+    color: rgba(255,255,255,0.7);
+  }
+  .key.empty { border: none; background: none; }
+  .boost-note {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 11px;
+    color: rgba(255,255,0,0.4);
+    letter-spacing: 0.1em;
+    margin-top: 8px;
+  }
+  .start-prompt {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 0.3em;
+    animation: pulse 2s ease-in-out infinite;
+  }
+  @keyframes pulse {
+    0%, 100% { opacity: 0.4; }
+    50% { opacity: 1; }
+  }
+
+  /* Game Over Screen */
+  #gameover-screen {
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    display: none;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: rgba(5,5,15,0.94);
+    z-index: 50;
+    pointer-events: auto;
+  }
+  #gameover-screen.visible { display: flex; }
+  .gameover-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 36px;
+    font-weight: 900;
+    color: #f44;
+    text-shadow: 0 0 20px rgba(255,68,68,0.6);
+    letter-spacing: 0.15em;
+    margin-bottom: 40px;
+  }
+  .results {
+    display: flex;
+    gap: 60px;
+    margin-bottom: 20px;
+  }
+  .result-panel {
+    text-align: center;
+    padding: 20px 36px;
+    border-radius: 4px;
+  }
+  .result-panel.p1-panel {
+    border: 1px solid rgba(0,255,255,0.3);
+    background: rgba(0,255,255,0.05);
+  }
+  .result-panel.p2-panel {
+    border: 1px solid rgba(255,0,255,0.3);
+    background: rgba(255,0,255,0.05);
+  }
+  .result-panel.winner {
+    box-shadow: 0 0 30px rgba(255,255,0,0.3);
+  }
+  .result-panel.p1-panel.winner { border-color: #ff0; background: rgba(255,255,0,0.08); }
+  .result-panel.p2-panel.winner { border-color: #ff0; background: rgba(255,255,0,0.08); }
+  .result-panel h3 {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    margin-bottom: 12px;
+    letter-spacing: 0.1em;
+  }
+  .p1-panel h3 { color: #0ff; }
+  .p2-panel h3 { color: #f0f; }
+  .result-score {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 48px;
+    font-weight: 900;
+  }
+  .p1-panel .result-score { color: #0ff; text-shadow: 0 0 15px rgba(0,255,255,0.6); }
+  .p2-panel .result-score { color: #f0f; text-shadow: 0 0 15px rgba(255,0,255,0.6); }
+  .winner-badge {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    color: #ff0;
+    letter-spacing: 0.3em;
+    margin-top: 8px;
+    text-shadow: 0 0 8px rgba(255,255,0,0.6);
+  }
+  .winner-text {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 18px;
+    margin-bottom: 30px;
+    letter-spacing: 0.1em;
+    text-shadow: 0 0 15px currentColor;
+  }
+  .tie-text { color: #ff0; }
+  .restart-prompt {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 0.3em;
+    animation: pulse 2s ease-in-out infinite;
+    margin-top: 20px;
+  }
+  .death-reason {
+    font-family: 'Share Tech Mono', monospace;
+    font-size: 12px;
+    color: rgba(255,68,68,0.7);
+    margin-bottom: 30px;
+    letter-spacing: 0.1em;
+  }
+
+  /* Pause indicator */
+  #pause-indicator {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 24px;
+    color: rgba(255,255,0,0.8);
+    text-shadow: 0 0 20px rgba(255,255,0,0.5);
+    letter-spacing: 0.3em;
+    z-index: 30;
+    display: none;
+    pointer-events: none;
+  }
+  #pause-indicator.visible { display: block; }
+
+
+/* Cyberpunk arcade back link */
+#arcade-back-link {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  padding: 8px 16px;
+  color: rgba(0,255,255,0.6);
+  text-decoration: none;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  letter-spacing: 0.15em;
+  border: 1px solid rgba(0,255,255,0.3);
+  border-radius: 3px;
+  background: rgba(0,0,20,0.7);
+  backdrop-filter: blur(4px);
+  transition: all 0.25s ease;
+  z-index: 9999;
+  pointer-events: auto;
+}
+#arcade-back-link:hover {
+  color: #0ff;
+  border-color: #0ff;
+  box-shadow: 0 0 15px rgba(0,255,255,0.3), inset 0 0 15px rgba(0,255,255,0.1);
+  background: rgba(0,255,255,0.08);
+}
+</style>
+</head>
+<body>
+<a href="arcade.html" id="arcade-back-link"><< BACK TO ARCADE</a>
+
+<div id="game-container">
+  <canvas id="gameCanvas"></canvas>
+  
+  <div id="ui-overlay">
+    <div class="hud">
+      <div class="hud-section" style="flex-direction: column; align-items: flex-start; gap: 4px;">
+        <span class="hud-label">PLAYER 1</span>
+        <span class="hud-value p1-color" id="p1ScoreHud">0</span>
+      </div>
+      <div class="hud-center">
+        <span class="title-color">CYBER SNAKE // DUEL</span>
+      </div>
+      <div class="hud-section" style="flex-direction: column; align-items: flex-end; gap: 4px;">
+        <span class="hud-label">PLAYER 2</span>
+        <span class="hud-value p2-color" id="p2ScoreHud">0</span>
+      </div>
+    </div>
+  </div>
+
+  <div id="pause-indicator">PAUSED [ESC TO RESUME]</div>
+
+  <!-- Menu Screen -->
+  <div id="menu-screen">
+    <div class="menu-title">CYBER SNAKE</div>
+    <div class="menu-subtitle">// Neon Duel //</div>
+    <div class="menu-controls">
+      <div class="control-panel p1-panel">
+        <h3>PLAYER 1</h3>
+        <div class="key-grid">
+          <div class="key empty"></div>
+          <div class="key p1-color">W</div>
+          <div class="key empty"></div>
+          <div class="key p1-color">A</div>
+          <div class="key p1-color">S</div>
+          <div class="key p1-color">D</div>
+        </div>
+        <div class="boost-note">HOLD [SPACE] TO ZOOM (-1 LEN/SEC)</div>
+      </div>
+      <div class="control-panel p2-panel">
+        <h3>PLAYER 2</h3>
+        <div class="key-grid">
+          <div class="key empty"></div>
+          <div class="key p2-color">↑</div>
+          <div class="key empty"></div>
+          <div class="key p2-color">←</div>
+          <div class="key p2-color">↓</div>
+          <div class="key p2-color">→</div>
+        </div>
+        <div class="boost-note">HOLD [ENTER] TO ZOOM (-1 LEN/SEC)</div>
+      </div>
+    </div>
+    <div class="start-prompt">[ PRESS ENTER TO START ]</div>
+  </div>
+
+  <!-- Game Over Screen -->
+  <div id="gameover-screen">
+    <div class="gameover-title">SYSTEM CRASH</div>
+    <div class="death-reason" id="deathReason"></div>
+    <div class="results">
+      <div class="result-panel p1-panel" id="p1Result">
+        <h3>PLAYER 1</h3>
+        <div class="result-score" id="p1FinalScore">0</div>
+        <div class="winner-badge" id="p1Winner"></div>
+      </div>
+      <div class="result-panel p2-panel" id="p2Result">
+        <h3>PLAYER 2</h3>
+        <div class="result-score" id="p2FinalScore">0</div>
+        <div class="winner-badge" id="p2Winner"></div>
+      </div>
+    </div>
+    <div class="winner-text" id="winnerText"></div>
+    <div class="restart-prompt">[ PRESS ENTER TO RESTART ]</div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// CYBER SNAKE // Two Player Neon Warfare
+// ============================================================
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// Board config - large board
+const CELL_SIZE = 14;
+const COLS = 80;
+const ROWS = 56;
+
+canvas.width = COLS * CELL_SIZE;
+canvas.height = ROWS * CELL_SIZE;
+
+// Game states
+const STATE_MENU = 0;
+const STATE_PLAYING = 1;
+const STATE_PAUSED = 2;
+const STATE_GAMEOVER = 3;
+
+let gameState = STATE_MENU;
+let gameTick = 0;
+let tickAccumulator = 0;
+const BASE_TICK_RATE = 80; // ms per tick
+
+// Particles system
+let particles = [];
+
+class Particle {
+  constructor(x, y, color) {
+    this.x = x;
+    this.y = y;
+    this.vx = (Math.random() - 0.5) * 4;
+    this.vy = (Math.random() - 0.5) * 4;
+    this.life = 1.0;
+    this.decay = 0.02 + Math.random() * 0.03;
+    this.size = 2 + Math.random() * 3;
+    this.color = color;
+  }
+  update() {
+    this.x += this.vx;
+    this.y += this.vy;
+    this.life -= this.decay;
+    this.vx *= 0.98;
+    this.vy *= 0.98;
+  }
+  draw(ctx) {
+    if (this.life <= 0) return;
+    ctx.globalAlpha = this.life * 0.7;
+    ctx.fillStyle = this.color;
+    ctx.shadowColor = this.color;
+    ctx.shadowBlur = 6;
+    ctx.fillRect(this.x - this.size/2, this.y - this.size/2, this.size, this.size);
+    ctx.shadowBlur = 0;
+    ctx.globalAlpha = 1;
+  }
+}
+
+function spawnParticles(gridX, gridY, color, count = 12) {
+  const px = gridX * CELL_SIZE + CELL_SIZE / 2;
+  const py = gridY * CELL_SIZE + CELL_SIZE / 2;
+  for (let i = 0; i < count; i++) {
+    particles.push(new Particle(px, py, color));
+  }
+}
+
+// Food dots
+let dots = [];
+const MAX_DOTS = 15;
+const DOT_SPAWN_INTERVAL = 8; // ticks between spawns
+let dotSpawnTimer = 0;
+
+function spawnDot() {
+  if (dots.length >= MAX_DOTS) return;
+  
+  let attempts = 0;
+  while (attempts < 200) {
+    const x = Math.floor(Math.random() * (COLS - 4)) + 2;
+    const y = Math.floor(Math.random() * (ROWS - 4)) + 2;
+    
+    // Check not on any snake or existing dot
+    let occupied = false;
+    for (const s of [snake1, snake2]) {
+      for (const seg of s.body) {
+        if (seg.x === x && seg.y === y) { occupied = true; break; }
+      }
+      if (occupied) break;
+    }
+    
+    if (!occupied) {
+      for (const d of dots) {
+        if (d.x === x && d.y === y) { occupied = true; break; }
+      }
+    }
+    
+    if (!occupied) {
+      const dotTypes = ['normal', 'normal', 'normal', 'bright'];
+      dots.push({
+        x, y,
+        type: dotTypes[Math.floor(Math.random() * dotTypes.length)],
+        pulse: Math.random() * Math.PI * 2
+      });
+      break;
+    }
+    attempts++;
+  }
+}
+
+// Snake class
+class Snake {
+  constructor(startX, startY, direction, color, glowColor) {
+    this.startX = startX;
+    this.startY = startY;
+    this.color = color;
+    this.glowColor = glowColor;
+    this.reset(direction);
+  }
+
+  reset(direction) {
+    this.body = [];
+    const len = 4;
+    // Body extends OPPOSITE to travel direction so first move doesn't self-collide
+    for (let i = 0; i < len; i++) {
+      let bx = this.startX, by = this.startY;
+      switch (direction) {
+        case 'up':   by += i; break;
+        case 'down': by -= i; break;
+        case 'left': bx += i; break;
+        case 'right': bx -= i; break;
+      }
+      this.body.push({ x: bx, y: by });
+    }
+    this.direction = direction;
+    this.nextDirection = direction;
+    this.score = 0;
+    this.alive = true;
+    this.growPending = 0;
+    this.deathReason = '';
+    // Movement: moves every 2 ticks normally, every 1 tick when boosting
+    this.moveTimer = 0;
+    this.moveInterval = 2;
+    // Boost drain timer
+    this.boostDrainTimer = 0;
+    this.isBoosting = false;
+  }
+
+  setDirection(newDir) {
+    const opposites = { up: 'down', down: 'up', left: 'right', right: 'left' };
+    if (opposites[newDir] !== this.direction) {
+      this.nextDirection = newDir;
+    }
+  }
+
+  handleBoost(boosting) {
+    if (!this.alive) return;
+    // Disable boosting when at minimum length to prevent self-collision
+    if (boosting && this.body.length <= 2) {
+      this.isBoosting = false;
+      this.moveInterval = 2;
+      return;
+    }
+    this.isBoosting = boosting;
+    this.moveInterval = boosting ? 1 : 2;
+  }
+
+  drainBoostLength() {
+    // Lose 1 segment per second of boosting
+    if (this.body.length > 2) {
+      this.body.pop();
+    }
+  }
+
+  tickMove() {
+    if (!this.alive) return;
+    
+    this.direction = this.nextDirection;
+    
+    const head = this.body[0];
+    let newX = head.x, newY = head.y;
+    
+    switch (this.direction) {
+      case 'up': newY--; break;
+      case 'down': newY++; break;
+      case 'left': newX--; break;
+      case 'right': newX++; break;
+    }
+    
+    // Wall collision
+    if (newX < 0 || newX >= COLS || newY < 0 || newY >= ROWS) {
+      this.alive = false;
+      this.deathReason = 'wall';
+      return;
+    }
+    
+    // Self collision (skip last segment since it will move away unless growing)
+    const checkLimit = this.growPending > 0 ? this.body.length : this.body.length - 1;
+    for (let i = 1; i < checkLimit; i++) {
+      if (this.body[i].x === newX && this.body[i].y === newY) {
+        this.alive = false;
+        this.deathReason = 'self';
+        return;
+      }
+    }
+    
+    // Move
+    this.body.unshift({ x: newX, y: newY });
+    
+    if (this.growPending > 0) {
+      this.growPending--;
+    } else {
+      this.body.pop();
+    }
+  }
+
+  checkDotCollision() {
+    if (!this.alive) return false;
+    const head = this.body[0];
+    
+    for (let i = dots.length - 1; i >= 0; i--) {
+      if (dots[i].x === head.x && dots[i].y === head.y) {
+        const dot = dots.splice(i, 1)[0];
+        this.score += dot.type === 'bright' ? 3 : 1;
+        this.growPending += 1; // +1 length per dot
+        spawnParticles(dot.x, dot.y, dot.type === 'bright' ? '#ff0' : this.color, dot.type === 'bright' ? 20 : 10);
+        return true;
+      }
+    }
+    return false;
+  }
+
+  draw(ctx) {
+    if (this.body.length === 0) return;
+    
+    for (let i = this.body.length - 1; i >= 0; i--) {
+      const seg = this.body[i];
+      const px = seg.x * CELL_SIZE;
+      const py = seg.y * CELL_SIZE;
+      const t = i / this.body.length;
+      
+      if (i === 0) {
+        // Head - brighter with glow (extra glow when boosting)
+        const headGlow = this.isBoosting ? 20 : 12;
+        ctx.shadowColor = this.isBoosting ? '#ff0' : this.glowColor;
+        ctx.shadowBlur = headGlow;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(px + 1, py + 1, CELL_SIZE - 2, CELL_SIZE - 2);
+        ctx.shadowBlur = 0;
+        
+        // Colored head overlay
+        ctx.globalAlpha = 0.85;
+        ctx.fillStyle = this.color;
+        ctx.fillRect(px + 1, py + 1, CELL_SIZE - 2, CELL_SIZE - 2);
+        ctx.globalAlpha = 1;
+        
+        // Eyes
+        const eyeOffX = this.direction === 'left' ? -2 : this.direction === 'right' ? 3 : 1;
+        const eyeOffY = this.direction === 'up' ? -2 : this.direction === 'down' ? 3 : 1;
+        ctx.fillStyle = '#fff';
+        if (this.direction === 'left' || this.direction === 'right') {
+          ctx.fillRect(px + eyeOffX, py + 2, 3, 3);
+          ctx.fillRect(px + eyeOffX, py + CELL_SIZE - 5, 3, 3);
+        } else {
+          ctx.fillRect(px + 2, py + eyeOffY, 3, 3);
+          ctx.fillRect(px + CELL_SIZE - 5, py + eyeOffY, 3, 3);
+        }
+      } else {
+        // Body segments with fading trail
+        const brightness = this.isBoosting ? (1.0 - t * 0.4) : (1.0 - t * 0.6);
+        ctx.globalAlpha = brightness;
+        ctx.fillStyle = this.color;
+        ctx.shadowColor = this.glowColor;
+        ctx.shadowBlur = (this.isBoosting ? 6 : 4) * (1 - t);
+        
+        const shrink = 1 + t * 2;
+        ctx.fillRect(
+          px + shrink, py + shrink,
+          CELL_SIZE - shrink * 2, CELL_SIZE - shrink * 2
+        );
+        
+        ctx.shadowBlur = 0;
+        ctx.globalAlpha = 1;
+      }
+    }
+  }
+}
+
+// Create snakes - positioned apart on the large board
+const snake1 = new Snake(20, Math.floor(ROWS / 4), 'right', '#00ffff', 'rgba(0,255,255,0.8)');
+const snake2 = new Snake(COLS - 21, Math.floor(ROWS * 3 / 4), 'left', '#ff00ff', 'rgba(255,0,255,0.8)');
+
+// ============================================================
+// DRAWING FUNCTIONS
+// ============================================================
+
+function drawBackground() {
+  // Dark background with subtle gradient
+  const grad = ctx.createRadialGradient(
+    canvas.width / 2, canvas.height / 2, 0,
+    canvas.width / 2, canvas.height / 2, canvas.width * 0.6
+  );
+  grad.addColorStop(0, '#0e0e1a');
+  grad.addColorStop(1, '#060610');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, canvas.width, canvas.height);
+  
+  // Grid overlay on game board
+  ctx.strokeStyle = 'rgba(0,255,255,0.04)';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x <= COLS; x++) {
+    ctx.beginPath();
+    ctx.moveTo(x * CELL_SIZE, 0);
+    ctx.lineTo(x * CELL_SIZE, canvas.height);
+    ctx.stroke();
+  }
+  for (let y = 0; y <= ROWS; y++) {
+    ctx.beginPath();
+    ctx.moveTo(0, y * CELL_SIZE);
+    ctx.lineTo(canvas.width, y * CELL_SIZE);
+    ctx.stroke();
+  }
+  
+  // Border glow
+  ctx.strokeStyle = 'rgba(255,255,0,0.15)';
+  ctx.lineWidth = 2;
+  ctx.shadowColor = '#ff0';
+  ctx.shadowBlur = 8;
+  ctx.strokeRect(0, 0, canvas.width, canvas.height);
+  ctx.shadowBlur = 0;
+}
+
+function drawDots() {
+  for (const dot of dots) {
+    const px = dot.x * CELL_SIZE + CELL_SIZE / 2;
+    const py = dot.y * CELL_SIZE + CELL_SIZE / 2;
+    
+    dot.pulse += 0.08;
+    const pulseSize = 1 + Math.sin(dot.pulse) * 0.3;
+    const radius = (CELL_SIZE / 2 - 2) * pulseSize;
+    
+    if (dot.type === 'bright') {
+      // Bright dot - gold/yellow, larger glow
+      ctx.shadowColor = '#ff0';
+      ctx.shadowBlur = 10;
+      ctx.fillStyle = '#ffe040';
+      ctx.globalAlpha = 0.8 + Math.sin(dot.pulse) * 0.2;
+      
+      // Diamond shape for special dots
+      ctx.beginPath();
+      ctx.moveTo(px, py - radius);
+      ctx.lineTo(px + radius, py);
+      ctx.lineTo(px, py + radius);
+      ctx.lineTo(px - radius, py);
+      ctx.closePath();
+      ctx.fill();
+      
+      ctx.shadowBlur = 0;
+      ctx.globalAlpha = 1;
+    } else {
+      // Normal dot - white/cyan with small glow
+      const isNearP1 = distToSnake(dot.x, dot.y, snake1) < 8;
+      const isNearP2 = distToSnake(dot.x, dot.y, snake2) < 8;
+      
+      let color = '#e0e0ff';
+      let glowColor = 'rgba(200,200,255,0.5)';
+      
+      if (isNearP1 && isNearP2) {
+        color = '#ff0';
+        glowColor = 'rgba(255,255,0,0.7)';
+      } else if (isNearP1) {
+        color = '#0ff';
+        glowColor = 'rgba(0,255,255,0.6)';
+      } else if (isNearP2) {
+        color = '#f0f';
+        glowColor = 'rgba(255,0,255,0.6)';
+      }
+      
+      ctx.shadowColor = glowColor;
+      ctx.shadowBlur = 4 + Math.sin(dot.pulse) * 2;
+      ctx.fillStyle = color;
+      
+      ctx.beginPath();
+      ctx.arc(px, py, radius, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.shadowBlur = 0;
+    }
+  }
+}
+
+function distToSnake(dx, dy, snake) {
+  const head = snake.body[0];
+  return Math.abs(head.x - dx) + Math.abs(head.y - dy);
+}
+
+// ============================================================
+// GAME LOGIC
+// ============================================================
+
+let deathReasonText = '';
+
+function checkCrossCollision() {
+  const h1 = snake1.body[0];
+  const h2 = snake2.body[0];
+  
+  // Head-to-head collision
+  if (h1 && h2 && h1.x === h2.x && h1.y === h2.y) {
+    snake1.alive = false;
+    snake2.alive = false;
+    snake1.deathReason = 'head-to-head';
+    snake2.deathReason = 'head-to-head';
+    deathReasonText = '/// HEAD-TO-HEAD COLLISION ///';
+    return;
+  }
+  
+  // P1 head into P2 body
+  if (snake1.alive && snake2.alive) {
+    for (const seg of snake2.body) {
+      if (h1.x === seg.x && h1.y === seg.y) {
+        snake1.alive = false;
+        snake1.deathReason = 'opponent';
+        deathReasonText = '/// PLAYER 1 HIT PLAYER 2 BODY ///';
+        spawnParticles(h1.x, h1.y, '#0ff', 25);
+        return;
+      }
+    }
+  }
+  
+  // P2 head into P1 body
+  if (snake1.alive && snake2.alive) {
+    for (const seg of snake1.body) {
+      if (h2.x === seg.x && h2.y === seg.y) {
+        snake2.alive = false;
+        snake2.deathReason = 'opponent';
+        deathReasonText = '/// PLAYER 2 HIT PLAYER 1 BODY ///';
+        spawnParticles(h2.x, h2.y, '#f0f', 25);
+        return;
+      }
+    }
+  }
+}
+
+function gameStep() {
+  // Update boost state for each snake
+  snake1.handleBoost(boostKeys.p1 && snake1.alive);
+  snake2.handleBoost(boostKeys.p2 && snake2.alive);
+  
+  // Move timer for each snake (independent speed based on boost)
+  if (snake1.alive) {
+    snake1.moveTimer++;
+    if (snake1.moveTimer >= snake1.moveInterval) {
+      snake1.moveTimer = 0;
+      snake1.tickMove();
+    }
+  }
+  if (snake2.alive) {
+    snake2.moveTimer++;
+    if (snake2.moveTimer >= snake2.moveInterval) {
+      snake2.moveTimer = 0;
+      snake2.tickMove();
+    }
+  }
+  
+  // Boost length drain: every ~12 ticks (= ~1 second at 80ms/tick)
+  if (snake1.isBoosting && snake1.alive) {
+    snake1.boostDrainTimer++;
+    if (snake1.boostDrainTimer >= 12) {
+      snake1.boostDrainTimer = 0;
+      snake1.drainBoostLength();
+    }
+  }
+  if (snake2.isBoosting && snake2.alive) {
+    snake2.boostDrainTimer++;
+    if (snake2.boostDrainTimer >= 12) {
+      snake2.boostDrainTimer = 0;
+      snake2.drainBoostLength();
+    }
+  }
+  
+  checkCrossCollision();
+  
+  if (snake1.alive) snake1.checkDotCollision();
+  if (snake2.alive) snake2.checkDotCollision();
+  
+  // Spawn dots periodically
+  dotSpawnTimer++;
+  if (dotSpawnTimer >= DOT_SPAWN_INTERVAL) {
+    dotSpawnTimer = 0;
+    spawnDot();
+  }
+  
+  gameTick++;
+  
+  // Check game over
+  if (!snake1.alive || !snake2.alive) {
+    endGame();
+  }
+}
+
+// Boost key tracking
+const boostKeys = { p1: false, p2: false };
+
+function startGame() {
+  snake1.reset('right');
+  snake2.reset('left');
+  dots = [];
+  particles = [];
+  gameTick = 0;
+  dotSpawnTimer = DOT_SPAWN_INTERVAL; // spawn immediately
+  deathReasonText = '';
+  boostKeys.p1 = false;
+  boostKeys.p2 = false;
+  
+  // Pre-spawn several dots
+  for (let i = 0; i < 8; i++) {
+    spawnDot();
+  }
+  
+  gameState = STATE_PLAYING;
+  document.getElementById('menu-screen').classList.add('hidden');
+  document.getElementById('gameover-screen').classList.remove('visible');
+}
+
+function endGame() {
+  gameState = STATE_GAMEOVER;
+  
+  const p1Score = snake1.score;
+  const p2Score = snake2.score;
+  
+  document.getElementById('p1FinalScore').textContent = p1Score;
+  document.getElementById('p2FinalScore').textContent = p2Score;
+  
+  const p1Result = document.getElementById('p1Result');
+  const p2Result = document.getElementById('p2Result');
+  const p1Winner = document.getElementById('p1Winner');
+  const p2Winner = document.getElementById('p2Winner');
+  const winnerText = document.getElementById('winnerText');
+  
+  p1Result.classList.remove('winner');
+  p2Result.classList.remove('winner');
+  p1Winner.textContent = '';
+  p2Winner.textContent = '';
+  winnerText.textContent = '';
+  winnerText.className = 'winner-text';
+  
+  if (deathReasonText) {
+    document.getElementById('deathReason').textContent = deathReasonText;
+  } else if (!snake1.alive && !snake2.alive) {
+    document.getElementById('deathReason').textContent = snake1.deathReason === 'wall' && snake2.deathReason === 'wall' 
+      ? '/// BOTH HIT WALLS ///' : '/// SIMULTANEOUS DEATH ///';
+  } else if (!snake1.alive) {
+    const reasons = { wall: '/// PLAYER 1 HIT A WALL ///', self: '/// PLAYER 1 ATE ITSELF ///', opponent: '/// PLAYER 1 HIT PLAYER 2 BODY ///' };
+    document.getElementById('deathReason').textContent = reasons[snake1.deathReason] || '/// SYSTEM ERROR ///';
+  } else {
+    const reasons = { wall: '/// PLAYER 2 HIT A WALL ///', self: '/// PLAYER 2 ATE ITSELF ///', opponent: '/// PLAYER 2 HIT PLAYER 1 BODY ///' };
+    document.getElementById('deathReason').textContent = reasons[snake2.deathReason] || '/// SYSTEM ERROR ///';
+  }
+  
+  if (p1Score > p2Score) {
+    p1Result.classList.add('winner');
+    p1Winner.textContent = '>> WINNER <<';
+    winnerText.textContent = 'PLAYER 1 WINS!';
+    winnerText.style.color = '#0ff';
+  } else if (p2Score > p1Score) {
+    p2Result.classList.add('winner');
+    p2Winner.textContent = '>> WINNER <<';
+    winnerText.textContent = 'PLAYER 2 WINS!';
+    winnerText.style.color = '#f0f';
+  } else {
+    winnerText.textContent = 'DRAW!';
+    winnerText.className = 'winner-text tie-text';
+  }
+  
+  document.getElementById('gameover-screen').classList.add('visible');
+}
+
+// ============================================================
+// INPUT HANDLING
+// ============================================================
+
+document.addEventListener('keydown', (e) => {
+  if (gameState === STATE_MENU || gameState === STATE_GAMEOVER) {
+    // Only Enter key starts/restarts the game
+    if (e.key === 'Enter') {
+      startGame();
+      return;
+    }
+    return;
+  }
+  
+  if (e.key === 'Escape') {
+    if (gameState === STATE_PLAYING) {
+      gameState = STATE_PAUSED;
+      document.getElementById('pause-indicator').classList.add('visible');
+    } else if (gameState === STATE_PAUSED) {
+      gameState = STATE_PLAYING;
+      document.getElementById('pause-indicator').classList.remove('visible');
+    }
+    return;
+  }
+  
+  if (gameState !== STATE_PLAYING) return;
+  
+  // Player 1 boost - Space
+  if (e.code === 'Space') {
+    boostKeys.p1 = true;
+    e.preventDefault();
+  }
+  
+  // Player 2 boost - Enter
+  if (e.key === 'Enter') {
+    boostKeys.p2 = true;
+    e.preventDefault();
+  }
+  
+  // Player 1 - WASD
+  switch (e.key.toLowerCase()) {
+    case 'w': snake1.setDirection('up'); break;
+    case 'a': snake1.setDirection('left'); break;
+    case 's': snake1.setDirection('down'); break;
+    case 'd': snake1.setDirection('right'); break;
+  }
+  
+  // Player 2 - Arrow keys
+  switch (e.key) {
+    case 'ArrowUp': snake2.setDirection('up'); e.preventDefault(); break;
+    case 'ArrowLeft': snake2.setDirection('left'); e.preventDefault(); break;
+    case 'ArrowDown': snake2.setDirection('down'); e.preventDefault(); break;
+    case 'ArrowRight': snake2.setDirection('right'); e.preventDefault(); break;
+  }
+});
+
+document.addEventListener('keyup', (e) => {
+  if (e.code === 'Space') boostKeys.p1 = false;
+  if (e.key === 'Enter') boostKeys.p2 = false;
+});
+
+// ============================================================
+// HUD UPDATE
+// ============================================================
+
+function updateHUD() {
+  document.getElementById('p1ScoreHud').textContent = snake1.score;
+  document.getElementById('p2ScoreHud').textContent = snake2.score;
+}
+
+// ============================================================
+// MAIN LOOP
+// ============================================================
+
+let lastTime = 0;
+
+function gameLoop(timestamp) {
+  const delta = timestamp - lastTime;
+  lastTime = timestamp;
+  
+  // Update particles (always, for visual effect)
+  for (let i = particles.length - 1; i >= 0; i--) {
+    particles[i].update();
+    if (particles[i].life <= 0) {
+      particles.splice(i, 1);
+    }
+  }
+  
+  if (gameState === STATE_PLAYING) {
+    tickAccumulator += delta;
+    
+    while (tickAccumulator >= BASE_TICK_RATE) {
+      gameStep();
+      tickAccumulator -= BASE_TICK_RATE;
+      
+      if (gameState !== STATE_PLAYING) break;
+    }
+    
+    updateHUD();
+  }
+  
+  // Render
+  drawBackground();
+  
+  if (gameState === STATE_PLAYING || gameState === STATE_PAUSED || gameState === STATE_GAMEOVER) {
+    drawDots();
+    snake1.draw(ctx);
+    snake2.draw(ctx);
+  }
+  
+  // Draw particles on top
+  for (const p of particles) {
+    p.draw(ctx);
+  }
+  
+  requestAnimationFrame(gameLoop);
+}
+
+// Start the loop
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>

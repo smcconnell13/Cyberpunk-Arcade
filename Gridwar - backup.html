@@ -1,0 +1,1415 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Cyberpunk Netrunner: Gridwar</title>
+    <style>
+        /* ========== GLOBAL STYLES ========== */
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background: #050508;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            overflow: hidden;
+            font-family: 'Courier New', monospace;
+        }
+
+        /* ========== GAME CONTAINER ========== */
+        #gameContainer {
+            position: relative;
+            border: 2px solid #0ff;
+            box-shadow: 0 0 20px #0ff, 0 0 40px #0ff, inset 0 0 20px rgba(0, 255, 255, 0.1);
+        }
+
+        canvas {
+            display: block;
+            background: #000000;
+        }
+
+        /* ========== HUD OVERLAY ========== */
+        #hud {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            padding: 8px 16px;
+            display: flex;
+            justify-content: space-between;
+            pointer-events: none;
+            z-index: 10;
+        }
+
+        .player-hud {
+            color: #fff;
+            font-size: 14px;
+            text-shadow: 0 0 10px currentColor;
+        }
+
+        .p1-hud { color: #0ff; }
+        .p2-hud { color: #f0f; }
+
+        /* ========== GAME OVER OVERLAY ========== */
+        #gameOverOverlay {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            flex-direction: column;
+            z-index: 100;
+        }
+
+        #gameOverOverlay.active {
+            display: flex;
+        }
+
+        #gameOverTitle {
+            font-size: 36px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            text-align: center;
+            animation: glitchPulse 0.5s ease-in-out infinite alternate;
+        }
+
+        #restartText {
+            color: #fff;
+            font-size: 18px;
+            text-shadow: 0 0 10px #fff;
+            animation: blink 1s step-end infinite;
+        }
+
+        @keyframes glitchPulse {
+            0% { opacity: 1; transform: translateX(0); }
+            25% { transform: translateX(-2px); }
+            50% { transform: translateX(2px); }
+            75% { transform: translateX(-1px); }
+            100% { opacity: 0.9; transform: translateX(0); }
+        }
+
+        @keyframes blink {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0; }
+        }
+    </style>
+</head>
+<body>
+    <div id="gameContainer">
+        <canvas id="gameCanvas"></canvas>
+        <div id="hud">
+            <div class="player-hud p1-hud" id="p1Hud">P1: EMP[0] RAD[1] SPD[N]</div>
+            <div class="player-hud p2-hud" id="p2Hud">P2: EMP[0] RAD[1] SPD[N]</div>
+        </div>
+        <div id="gameOverOverlay">
+            <div id="gameOverTitle"></div>
+            <div id="restartText">Press 'R' to Restart</div>
+        </div>
+    </div>
+
+    <script>
+    // ============================================================
+    //  CYBERPUNK NETRUNNER: GRIDWAR - Complete Game Engine
+    // ============================================================
+
+    // ========== CONSTANTS ==========
+    const COLS = 15;           // Grid columns (odd number for proper border)
+    const ROWS = 13;           // Grid rows (odd number for proper border)
+    const TILE_SIZE = 48;      // Pixel size of each grid cell
+    const CANVAS_WIDTH = COLS * TILE_SIZE;
+    const CANVAS_HEIGHT = ROWS * TILE_SIZE;
+
+    // Tile Types
+    const TILE_EMPTY = 0;
+    const TILE_SOLID = 1;      // Indestructible "Mainframe Core"
+    const TILE_DESTRUCTIBLE = 2; // Destructible "Encrypted Firewall"
+
+    // Bomb/Explosion Timing
+    const BOMB_FUSE_TIME = 2500;   // ms before explosion
+    const EXPLOSION_DURATION = 500; // ms explosion stays visible & deadly
+
+    // Default Player Stats
+    const BASE_SPEED = 120;        // pixels per second
+    const BASE_BOMB_COUNT = 1;     // max simultaneous bombs
+    const BASE_BLAST_RADIUS = 1;   // explosion cross radius in tiles
+    const SPEED_INCREMENT = 30;    // speed boost per power-up
+
+    // Power-Up Types
+    const POWERUP_NONE = 0;
+    const POWERUP_SPEED = 'S';     // Overclock - Speed Boost
+    const POWERUP_BOMB = 'B';      // Buffer Expansion - Extra Bombs
+    const POWERUP_RADIUS = 'R';    // Signal Amplifier - Blast Radius
+
+    // Power-up spawn chance when destroying a block
+    const POWERUP_SPAWN_CHANCE = 0.25;
+
+    // ========== CANVAS SETUP ==========
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    canvas.width = CANVAS_WIDTH;
+    canvas.height = CANVAS_HEIGHT;
+
+    // DOM References
+    const gameOverOverlay = document.getElementById('gameOverOverlay');
+    const gameOverTitle = document.getElementById('gameOverTitle');
+    const p1Hud = document.getElementById('p1Hud');
+    const p2Hud = document.getElementById('p2Hud');
+
+    // ========== GAME STATE ==========
+    let grid = [];              // 2D array of tile types
+    let powerups = [];          // Array of active power-ups {x, y, type}
+    let bombs = [];             // Array of active bombs
+    let explosions = [];        // Array of active explosion tiles
+    let particles = [];         // Visual particle effects
+    let players = [];           // Array of 2 player objects
+    let gameOver = false;       // Game over flag
+    let keysPressed = {};       // Track currently pressed keys
+
+    // ========== INPUT HANDLING ==========
+    window.addEventListener('keydown', (e) => {
+        keysPressed[e.code] = true;
+
+        // Restart game when R is pressed after game over
+        if (gameOver && e.code === 'KeyR') {
+            initGame();
+        }
+
+        // Prevent scrolling for game keys
+        if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight', 'Space', 'Enter'].includes(e.code)) {
+            e.preventDefault();
+        }
+    });
+
+    window.addEventListener('keyup', (e) => {
+        keysPressed[e.code] = false;
+    });
+
+    // ============================================================
+    //  INITIALIZATION
+    // ============================================================
+
+    /**
+     * Initialize the game - reset all state and generate level
+     */
+    function initGame() {
+        gameOver = false;
+        bombs = [];
+        explosions = [];
+        particles = [];
+        powerups = [];
+        keysPressed = {};
+        gameOverOverlay.classList.remove('active');
+
+        // Generate the procedural grid
+        generateGrid();
+
+        // Spawn Power-ups under some destructible blocks (tracked for later reveal)
+        // Actually, power-ups are revealed when blocks are destroyed, so we handle that on destruction
+
+        // Initialize Players at opposite corners
+        players = [
+            {
+                id: 1,
+                color: '#00ffff',       // Neon Cyan
+                glowColor: '#00ffff',
+                gridX: 1,
+                gridY: 1,
+                pixelX: 1 * TILE_SIZE,
+                pixelY: 1 * TILE_SIZE,
+                speed: BASE_SPEED,
+                maxBombs: BASE_BOMB_COUNT,
+                blastRadius: BASE_BLAST_RADIUS,
+                alive: true,
+                moveDir: { x: 0, y: 0 }
+            },
+            {
+                id: 2,
+                color: '#ff00ff',       // Neon Magenta
+                glowColor: '#ff00ff',
+                gridX: COLS - 2,
+                gridY: ROWS - 2,
+                pixelX: (COLS - 2) * TILE_SIZE,
+                pixelY: (ROWS - 2) * TILE_SIZE,
+                speed: BASE_SPEED,
+                maxBombs: BASE_BOMB_COUNT,
+                blastRadius: BASE_BLAST_RADIUS,
+                alive: true,
+                moveDir: { x: 0, y: 0 }
+            }
+        ];
+
+        updateHUD();
+    }
+
+    // ============================================================
+    //  PROCEDURAL GRID GENERATION
+    // ============================================================
+
+    /**
+     * Generate the game grid with proper borders, alternating solid blocks,
+     * random destructible firewalls, and guaranteed safe spawn zones.
+     */
+    function generateGrid() {
+        grid = [];
+
+        for (let y = 0; y < ROWS; y++) {
+            grid[y] = [];
+            for (let x = 0; x < COLS; x++) {
+                // Outer border is always solid
+                if (x === 0 || x === COLS - 1 || y === 0 || y === ROWS - 1) {
+                    grid[y][x] = TILE_SOLID;
+                }
+                // Alternating inner blocks at odd x AND odd y are solid
+                else if (x % 2 === 1 && y % 2 === 1) {
+                    grid[y][x] = TILE_SOLID;
+                }
+                else {
+                    // Empty tile candidate - will be randomly filled
+                    grid[y][x] = TILE_EMPTY;
+                }
+            }
+        }
+
+        // Define safe spawn zones for both players
+        const p1Safe = getSafeZone(1, 1);
+        const p2Safe = getSafeZone(COLS - 2, ROWS - 2);
+
+        // Fill remaining empty tiles with destructible blocks at ~45% rate
+        for (let y = 1; y < ROWS - 1; y++) {
+            for (let x = 1; x < COLS - 1; x++) {
+                if (grid[y][x] === TILE_EMPTY) {
+                    // Skip safe zones
+                    if (isInSafeZone(x, y, p1Safe) || isInSafeZone(x, y, p2Safe)) {
+                        continue;
+                    }
+                    // Random placement at 45% rate
+                    if (Math.random() < 0.45) {
+                        grid[y][x] = TILE_DESTRUCTIBLE;
+                    }
+                }
+            }
+        }
+
+        // Clear safe zones: ensure ALL tiles in spawn areas are empty (including solid blocks)
+        // This is critical because the alternating pattern places SOLID blocks at odd x AND odd y,
+        // which would block player movement at spawn positions like (1,1) and (COLS-2, ROWS-2).
+        for (const cell of p1Safe) {
+            if (cell.x > 0 && cell.x < COLS - 1 && cell.y > 0 && cell.y < ROWS - 1) {
+                grid[cell.y][cell.x] = TILE_EMPTY;
+            }
+        }
+        for (const cell of p2Safe) {
+            if (cell.x > 0 && cell.x < COLS - 1 && cell.y > 0 && cell.y < ROWS - 1) {
+                grid[cell.y][cell.x] = TILE_EMPTY;
+            }
+        }
+    }
+
+    /**
+     * Get safe zone tiles around a spawn point (the cell + 4 cardinal neighbors)
+     */
+    function getSafeZone(cx, cy) {
+        const zone = [];
+        zone.push({ x: cx, y: cy });
+        zone.push({ x: cx - 1, y: cy });
+        zone.push({ x: cx + 1, y: cy });
+        zone.push({ x: cx, y: cy - 1 });
+        zone.push({ x: cx, y: cy + 1 });
+        return zone;
+    }
+
+    /**
+     * Check if a tile is within the safe zone
+     */
+    function isInSafeZone(x, y, zone) {
+        for (const cell of zone) {
+            if (cell.x === x && cell.y === y) return true;
+        }
+        return false;
+    }
+
+    // ============================================================
+    //  GAME LOOP
+    // ============================================================
+
+    let lastTime = 0;
+
+    /**
+     * Main game loop using requestAnimationFrame
+     */
+    function gameLoop(timestamp) {
+        const deltaTime = Math.min((timestamp - lastTime) / 1000, 0.05); // Cap delta to avoid huge jumps
+        lastTime = timestamp;
+
+        if (!gameOver) {
+            handleInput(deltaTime);
+            update(deltaTime);
+        }
+
+        render();
+        requestAnimationFrame(gameLoop);
+    }
+
+    // ============================================================
+    //  INPUT PROCESSING
+    // ============================================================
+
+    /**
+     * Process player input each frame
+     */
+    function handleInput(dt) {
+        // Player 1 Controls (Arrow Keys + Enter for bomb)
+        if (players[0].alive) {
+            let dx = 0, dy = 0;
+            if (keysPressed['ArrowUp']) dy = -1;
+            else if (keysPressed['ArrowDown']) dy = 1;
+            else if (keysPressed['ArrowLeft']) dx = -1;
+            else if (keysPressed['ArrowRight']) dx = 1;
+            players[0].moveDir = { x: dx, y: dy };
+
+            // Drop EMP Spike
+            if (keysPressed['Enter']) {
+                dropBomb(0);
+                keysPressed['Enter'] = false; // Prevent rapid re-triggering
+            }
+        }
+
+        // Player 2 Controls (WASD + Spacebar for bomb)
+        if (players[1].alive) {
+            let dx = 0, dy = 0;
+            if (keysPressed['KeyW']) dy = -1;
+            else if (keysPressed['KeyS']) dy = 1;
+            else if (keysPressed['KeyA']) dx = -1;
+            else if (keysPressed['KeyD']) dx = 1;
+            players[1].moveDir = { x: dx, y: dy };
+
+            // Drop EMP Spike
+            if (keysPressed['Space']) {
+                dropBomb(1);
+                keysPressed['Space'] = false; // Prevent rapid re-triggering
+            }
+        }
+    }
+
+    // ============================================================
+    //  UPDATE LOGIC
+    // ============================================================
+
+    /**
+     * Update game state each frame
+     */
+    function update(dt) {
+        // Move players
+        for (const player of players) {
+            if (player.alive) {
+                movePlayer(player, dt);
+            }
+        }
+
+        // Check power-up pickups
+        for (const player of players) {
+            if (player.alive) {
+                checkPowerupPickup(player);
+            }
+        }
+
+        // Update bomb timers and trigger explosions
+        updateBombs(dt);
+
+        // Update explosion timers
+        updateExplosions(dt);
+
+        // Update particle effects
+        updateParticles(dt);
+
+        // Check if players are hit by explosions
+        checkPlayerHits();
+
+        // Check win/loss conditions
+        checkGameOver();
+    }
+
+    // ============================================================
+    //  PLAYER MOVEMENT WITH COLLISION
+    // ============================================================
+
+    /**
+     * Move a player with grid-based collision detection.
+     * Uses smooth pixel interpolation with AABB collision against tiles and active bombs.
+     */
+    function movePlayer(player, dt) {
+        const speed = player.speed;
+        const moveX = player.moveDir.x * speed * dt;
+        const moveY = player.moveDir.y * speed * dt;
+
+        // Player hitbox is slightly smaller than a tile to allow smooth movement through gaps
+        const hitboxPadding = TILE_SIZE * 0.15;
+        const halfSize = (TILE_SIZE - hitboxPadding) / 2;
+
+        // Try moving in X direction
+        if (moveX !== 0) {
+            const newX = player.pixelX + moveX;
+            if (!collidesAt(newX, player.pixelY, halfSize, hitboxPadding)) {
+                player.pixelX = newX;
+            } else {
+                // Try to snap to the grid axis for cleaner corner sliding
+                const snappedX = Math.round(player.pixelX / TILE_SIZE) * TILE_SIZE;
+                if (Math.abs(newX - snappedX) < TILE_SIZE * 0.35) {
+                    if (!collidesAt(snappedX, player.pixelY, halfSize, hitboxPadding)) {
+                        player.pixelX = snappedX + moveX;
+                    }
+                }
+            }
+        }
+
+        // Try moving in Y direction
+        if (moveY !== 0) {
+            const newY = player.pixelY + moveY;
+            if (!collidesAt(player.pixelX, newY, halfSize, hitboxPadding)) {
+                player.pixelY = newY;
+            } else {
+                // Try to snap to the grid axis for cleaner corner sliding
+                const snappedY = Math.round(player.pixelY / TILE_SIZE) * TILE_SIZE;
+                if (Math.abs(newY - snappedY) < TILE_SIZE * 0.35) {
+                    if (!collidesAt(player.pixelX, snappedY, halfSize, hitboxPadding)) {
+                        player.pixelY = snappedY + moveY;
+                    }
+                }
+            }
+        }
+
+        // Clamp within grid bounds
+        player.pixelX = Math.max(0, Math.min(CANVAS_WIDTH - TILE_SIZE, player.pixelX));
+        player.pixelY = Math.max(0, Math.min(CANVAS_HEIGHT - TILE_SIZE, player.pixelY));
+
+        // Update grid coordinates
+        player.gridX = Math.floor((player.pixelX + TILE_SIZE / 2) / TILE_SIZE);
+        player.gridY = Math.floor((player.pixelY + TILE_SIZE / 2) / TILE_SIZE);
+    }
+
+    /**
+     * Check if a player collides with any solid/destructible tile or active bomb at the given position.
+     * px/py are the top-left pixel coordinates of the player sprite.
+     * We check four corners of the player's hitbox against the grid.
+     */
+    function collidesAt(px, py, halfSize, padding) {
+        const left = px + padding;
+        const right = px + TILE_SIZE - padding;
+        const top = py + padding;
+        const bottom = py + TILE_SIZE - padding;
+
+        // Check the four corner tiles for collision
+        const corners = [
+            { x: left, y: top },
+            { x: right - 0.01, y: top },
+            { x: left, y: bottom - 0.01 },
+            { x: right - 0.01, y: bottom - 0.01 }
+        ];
+
+        for (const corner of corners) {
+            const gx = Math.floor(corner.x / TILE_SIZE);
+            const gy = Math.floor(corner.y / TILE_SIZE);
+
+            // Out of bounds
+            if (gx < 0 || gx >= COLS || gy < 0 || gy >= ROWS) return true;
+
+            // Solid or destructible tile
+            if (grid[gy][gx] === TILE_SOLID || grid[gy][gx] === TILE_DESTRUCTIBLE) {
+                return true;
+            }
+
+            // Active bomb that is "locked" - but don't block if the player's pixel position
+            // still overlaps this tile. This prevents getting trapped when placing a bomb:
+            // the player needs room to slide out before the bomb becomes solid.
+            for (const bomb of bombs) {
+                if (bomb.gridX === gx && bomb.gridY === gy && bomb.active) {
+                    // Check pixel-level overlap: only block if the player has fully left this tile
+                    const bombLeft = bomb.gridX * TILE_SIZE;
+                    const bombTop = bomb.gridY * TILE_SIZE;
+                    const playerLeft = px + padding;
+                    const playerRight = px + TILE_SIZE - padding;
+                    const playerTop = py + padding;
+                    const playerBottom = py + TILE_SIZE - padding;
+
+                    // If any part of the player still overlaps this bomb tile, don't block it yet
+                    if (playerRight > bombLeft && playerLeft < bombLeft + TILE_SIZE &&
+                        playerBottom > bombTop && playerTop < bombTop + TILE_SIZE) {
+                        continue;
+                    }
+                    return true;
+                }
+            }
+        }
+
+        return false;
+    }
+
+    // ============================================================
+    //  BOMB / EMP SPIKE LOGIC
+    // ============================================================
+
+    /**
+     * Drop an EMP Spike at the player's current grid position.
+     */
+    function dropBomb(playerIndex) {
+        const player = players[playerIndex];
+
+        // Count how many bombs this player currently has on the field
+        const currentBombs = bombs.filter(b => b.playerIndex === playerIndex).length;
+        if (currentBombs >= player.maxBombs) return; // At max bomb capacity
+
+        const gx = player.gridX;
+        const gy = player.gridY;
+
+        // Cannot place a bomb where one already exists
+        for (const bomb of bombs) {
+            if (bomb.gridX === gx && bomb.gridY === gy) return;
+        }
+
+        // Spawn the bomb
+        bombs.push({
+            gridX: gx,
+            gridY: gy,
+            playerIndex: playerIndex,
+            timer: BOMB_FUSE_TIME,
+            active: false,  // Becomes solid only after player leaves the tile
+            pixelX: gx * TILE_SIZE + TILE_SIZE / 2,
+            pixelY: gy * TILE_SIZE + TILE_SIZE / 2
+        });
+
+        // Auto-lock if player is already moving off the tile (handled in update)
+    }
+
+    /**
+     * Update bomb timers; activate bombs when player leaves; trigger explosions.
+     */
+    function updateBombs(dt) {
+        for (let i = bombs.length - 1; i >= 0; i--) {
+            const bomb = bombs[i];
+
+            // Lock the bomb (make it solid) once the owning player has PHYSICALLY left the tile.
+            // Use pixel-level overlap check instead of grid coordinates, because gridX/gridY
+            // change with even a tiny shift and would activate the bomb before the player can escape.
+            if (!bomb.active) {
+                const owner = players[bomb.playerIndex];
+                const bombLeft = bomb.gridX * TILE_SIZE;
+                const bombTop = bomb.gridY * TILE_SIZE;
+                const pad = TILE_SIZE * 0.15;
+                const playerLeft = owner.pixelX + pad;
+                const playerRight = owner.pixelX + TILE_SIZE - pad;
+                const playerTop = owner.pixelY + pad;
+                const playerBottom = owner.pixelY + TILE_SIZE - pad;
+
+                // Only activate when the player is no longer overlapping this tile
+                if (!(playerRight > bombLeft && playerLeft < bombLeft + TILE_SIZE &&
+                      playerBottom > bombTop && playerTop < bombTop + TILE_SIZE)) {
+                    bomb.active = true;
+                }
+            }
+
+            // Only count down after bomb is active
+            if (bomb.active) {
+                bomb.timer -= dt * 1000;
+
+                if (bomb.timer <= 0) {
+                    triggerExplosion(bomb);
+                    bombs.splice(i, 1);
+                }
+            }
+        }
+    }
+
+    // ============================================================
+    //  EXPLOSION / DATA GLITCH CASCADE LOGIC
+    // ============================================================
+
+    /**
+     * Trigger a Data Glitch Cascade from a bomb.
+     * Expands in 4 cardinal directions forming a '+' shape.
+     */
+    function triggerExplosion(bomb) {
+        const radius = players[bomb.playerIndex].blastRadius;
+        const dir = [{ x: 0, y: 0 }, { x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }];
+
+        // Center tile always explodes
+        explosions.push({
+            gridX: bomb.gridX,
+            gridY: bomb.gridY,
+            timer: EXPLOSION_DURATION
+        });
+
+        // Spawn center particles
+        spawnExplosionParticles(bomb.gridX, bomb.gridY);
+
+        // Expand in each of the 4 cardinal directions
+        const cardinals = [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }];
+
+        for (const d of cardinals) {
+            for (let r = 1; r <= radius; r++) {
+                const nx = bomb.gridX + d.x * r;
+                const ny = bomb.gridY + d.y * r;
+
+                // Out of bounds - stop
+                if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) break;
+
+                // Hit an indestructible Mainframe Core - stop in this direction without destroying
+                if (grid[ny][nx] === TILE_SOLID) break;
+
+                // Add explosion tile
+                explosions.push({
+                    gridX: nx,
+                    gridY: ny,
+                    timer: EXPLOSION_DURATION
+                });
+
+                spawnExplosionParticles(nx, ny);
+
+                // Hit a destructible Encrypted Firewall - destroy it and stop in this direction
+                if (grid[ny][nx] === TILE_DESTRUCTIBLE) {
+                    grid[ny][nx] = TILE_EMPTY;
+
+                    // Chance to spawn a power-up
+                    trySpawnPowerup(nx, ny);
+
+                    break; // Stop propagation after destroying
+                }
+
+                // Empty tile - continue expanding
+            }
+        }
+
+        // Chain reaction: Collect all bombs that need to explode FIRST, then trigger explosions, then splice.
+        // This avoids modifying the array while iterating, and prevents the recursive triggerExplosion
+        // from corrupting indices during updateBombs' iteration.
+        let allChainBombs = [];
+        let chained = true;
+        while (chained) {
+            chained = false;
+            for (let i = bombs.length - 1; i >= 0; i--) {
+                const otherBomb = bombs[i];
+                // Skip the bomb that triggered this explosion - handled by updateBombs
+                if (otherBomb === bomb) {
+                    continue;
+                }
+                for (const expTile of explosions) {
+                    if (otherBomb.gridX === expTile.gridX && otherBomb.gridY === expTile.gridY) {
+                        // Check not already queued
+                        if (allChainBombs.includes(otherBomb)) break;
+                        allChainBombs.push(otherBomb);
+                        chained = true;
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Now trigger explosions for all collected chain bombs (adds their tiles to explosions)
+        for (const chainBomb of allChainBombs) {
+            const radius = players[chainBomb.playerIndex].blastRadius;
+            const cardinals = [{ x: 1, y: 0 }, { x: -1, y: 0 }, { x: 0, y: 1 }, { x: 0, y: -1 }];
+
+            // Center tile
+            explosions.push({
+                gridX: chainBomb.gridX,
+                gridY: chainBomb.gridY,
+                timer: EXPLOSION_DURATION
+            });
+            spawnExplosionParticles(chainBomb.gridX, chainBomb.gridY);
+
+            for (const d of cardinals) {
+                for (let r = 1; r <= radius; r++) {
+                    const nx = chainBomb.gridX + d.x * r;
+                    const ny = chainBomb.gridY + d.y * r;
+                    if (nx < 0 || nx >= COLS || ny < 0 || ny >= ROWS) break;
+                    if (grid[ny][nx] === TILE_SOLID) break;
+                    explosions.push({
+                        gridX: nx,
+                        gridY: ny,
+                        timer: EXPLOSION_DURATION
+                    });
+                    spawnExplosionParticles(nx, ny);
+                    if (grid[ny][nx] === TILE_DESTRUCTIBLE) {
+                        grid[ny][nx] = TILE_EMPTY;
+                        trySpawnPowerup(nx, ny);
+                        break;
+                    }
+                }
+            }
+        }
+
+        // Finally, splice all chain bombs out of the array at once
+        for (let i = bombs.length - 1; i >= 0; i--) {
+            if (allChainBombs.includes(bombs[i])) {
+                bombs.splice(i, 1);
+            }
+        }
+    }
+
+    /**
+     * Update explosion timers and remove expired explosions.
+     */
+    function updateExplosions(dt) {
+        for (let i = explosions.length - 1; i >= 0; i--) {
+            explosions[i].timer -= dt * 1000;
+            if (explosions[i].timer <= 0) {
+                explosions.splice(i, 1);
+            }
+        }
+    }
+
+    // ============================================================
+    //  PLAYER HIT DETECTION
+    // ============================================================
+
+    /**
+     * Check if any living player is currently on an active explosion tile.
+     */
+    function checkPlayerHits() {
+        for (const player of players) {
+            if (!player.alive) continue;
+
+            const px = player.pixelX + TILE_SIZE / 2;
+            const py = player.pixelY + TILE_SIZE / 2;
+            const pgx = Math.floor(px / TILE_SIZE);
+            const pgy = Math.floor(py / TILE_SIZE);
+
+            for (const exp of explosions) {
+                if (exp.gridX === pgx && exp.gridY === pgy) {
+                    player.alive = false;
+                    spawnDeathParticles(player);
+                    break;
+                }
+            }
+        }
+    }
+
+    // ============================================================
+    //  GAME OVER CHECK
+    // ============================================================
+
+    /**
+     * Check win/loss conditions and display game over screen.
+     */
+    function checkGameOver() {
+        if (gameOver) return;
+
+        const p1Alive = players[0].alive;
+        const p2Alive = players[1].alive;
+
+        if (!p1Alive || !p2Alive) {
+            gameOver = true;
+
+            let titleText = '';
+            let titleColor = '#fff';
+
+            if (!p1Alive && !p2Alive) {
+                titleText = 'MUTUAL ANNIHILATION';
+                titleColor = '#ff0040';
+            } else if (!p1Alive) {
+                titleText = 'NETRUNNER 2 WINS';
+                titleColor = players[1].color;
+            } else {
+                titleText = 'NETRUNNER 1 WINS';
+                titleColor = players[0].color;
+            }
+
+            gameOverTitle.textContent = titleText;
+            gameOverTitle.style.color = titleColor;
+            gameOverTitle.style.textShadow = `0 0 20px ${titleColor}, 0 0 40px ${titleColor}`;
+            gameOverOverlay.classList.add('active');
+        }
+    }
+
+    // ============================================================
+    //  POWER-UP SYSTEM
+    // ============================================================
+
+    /**
+     * Try to spawn a power-up at the given grid position (25% chance).
+     */
+    function trySpawnPowerup(gx, gy) {
+        if (Math.random() >= POWERUP_SPAWN_CHANCE) return;
+
+        const rand = Math.random();
+        let type;
+        if (rand < 0.333) {
+            type = POWERUP_SPEED;
+        } else if (rand < 0.666) {
+            type = POWERUP_BOMB;
+        } else {
+            type = POWERUP_RADIUS;
+        }
+
+        powerups.push({
+            gridX: gx,
+            gridY: gy,
+            type: type,
+            pixelX: gx * TILE_SIZE + TILE_SIZE / 2,
+            pixelY: gy * TILE_SIZE + TILE_SIZE / 2,
+            bobPhase: Math.random() * Math.PI * 2
+        });
+    }
+
+    /**
+     * Check if a player is standing on a power-up and apply its effect.
+     */
+    function checkPowerupPickup(player) {
+        for (let i = powerups.length - 1; i >= 0; i--) {
+            const pu = powerups[i];
+            if (pu.gridX === player.gridX && pu.gridY === player.gridY) {
+                applyPowerup(player, pu.type);
+                powerups.splice(i, 1);
+                updateHUD();
+            }
+        }
+    }
+
+    /**
+     * Apply a cybernetic augment to a player.
+     */
+    function applyPowerup(player, type) {
+        switch (type) {
+            case POWERUP_SPEED:
+                player.speed += SPEED_INCREMENT;
+                break;
+            case POWERUP_BOMB:
+                player.maxBombs += 1;
+                break;
+            case POWERUP_RADIUS:
+                player.blastRadius += 1;
+                break;
+        }
+    }
+
+    // ============================================================
+    //  HUD UPDATE
+    // ============================================================
+
+    /**
+     * Update the HUD display with current player stats.
+     */
+    function updateHUD() {
+        const p1 = players[0];
+        const p2 = players[1];
+
+        const spdLabel1 = p1.speed === BASE_SPEED ? 'N' : Math.round((p1.speed - BASE_SPEED) / SPEED_INCREMENT);
+        const spdLabel2 = p2.speed === BASE_SPEED ? 'N' : Math.round((p2.speed - BASE_SPEED) / SPEED_INCREMENT);
+
+        p1Hud.textContent = `P1: EMP[${p1.maxBombs}] RAD[${p1.blastRadius}] SPD[${spdLabel1}]`;
+        p2Hud.textContent = `P2: EMP[${p2.maxBombs}] RAD[${p2.blastRadius}] SPD[${spdLabel2}]`;
+    }
+
+    // ============================================================
+    //  PARTICLE EFFECTS
+    // ============================================================
+
+    /**
+     * Spawn glitch particles at a grid position for explosion visuals.
+     */
+    function spawnExplosionParticles(gx, gy) {
+        const cx = gx * TILE_SIZE + TILE_SIZE / 2;
+        const cy = gy * TILE_SIZE + TILE_SIZE / 2;
+
+        for (let i = 0; i < 8; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 30 + Math.random() * 60;
+            particles.push({
+                x: cx,
+                y: cy,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                life: 0.3 + Math.random() * 0.4,
+                maxLife: 0.3 + Math.random() * 0.4,
+                size: 2 + Math.random() * 3,
+                color: Math.random() < 0.5 ? '#ff0' : '#f0f'
+            });
+        }
+    }
+
+    /**
+     * Spawn death particles for a killed player.
+     */
+    function spawnDeathParticles(player) {
+        const cx = player.pixelX + TILE_SIZE / 2;
+        const cy = player.pixelY + TILE_SIZE / 2;
+
+        for (let i = 0; i < 30; i++) {
+            const angle = Math.random() * Math.PI * 2;
+            const speed = 50 + Math.random() * 150;
+            particles.push({
+                x: cx,
+                y: cy,
+                vx: Math.cos(angle) * speed,
+                vy: Math.sin(angle) * speed,
+                life: 0.5 + Math.random() * 1.0,
+                maxLife: 0.5 + Math.random() * 1.0,
+                size: 2 + Math.random() * 4,
+                color: player.color
+            });
+        }
+    }
+
+    /**
+     * Update particle positions and lifetimes.
+     */
+    function updateParticles(dt) {
+        for (let i = particles.length - 1; i >= 0; i--) {
+            const p = particles[i];
+            p.x += p.vx * dt;
+            p.y += p.vy * dt;
+            p.life -= dt;
+            if (p.life <= 0) {
+                particles.splice(i, 1);
+            }
+        }
+    }
+
+    // ============================================================
+    //  RENDERING - All visuals drawn procedurally with Canvas API
+    // ============================================================
+
+    /**
+     * Main render function called every frame.
+     */
+    function render() {
+        // Clear canvas
+        ctx.fillStyle = '#050508';
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+
+        // Draw subtle grid lines
+        drawGridLines();
+
+        // Draw all tiles
+        drawTiles();
+
+        // Draw power-ups
+        drawPowerups();
+
+        // Draw bombs (EMP Spikes)
+        drawBombs();
+
+        // Draw explosions (Data Glitch Cascades)
+        drawExplosions();
+
+        // Draw particles
+        drawParticles();
+
+        // Draw players (Netrunners)
+        for (const player of players) {
+            if (player.alive) {
+                drawPlayer(player);
+            }
+        }
+
+        // Scanline overlay effect
+        drawScanlines();
+    }
+
+    /**
+     * Draw subtle background grid lines for the cyberpunk matrix feel.
+     */
+    function drawGridLines() {
+        ctx.strokeStyle = 'rgba(0, 255, 255, 0.03)';
+        ctx.lineWidth = 0.5;
+
+        for (let x = 0; x <= CANVAS_WIDTH; x += TILE_SIZE) {
+            ctx.beginPath();
+            ctx.moveTo(x, 0);
+            ctx.lineTo(x, CANVAS_HEIGHT);
+            ctx.stroke();
+        }
+
+        for (let y = 0; y <= CANVAS_HEIGHT; y += TILE_SIZE) {
+            ctx.beginPath();
+            ctx.moveTo(0, y);
+            ctx.lineTo(CANVAS_WIDTH, y);
+            ctx.stroke();
+        }
+    }
+
+    /**
+     * Draw all grid tiles (Mainframe Cores and Encrypted Firewalls).
+     */
+    function drawTiles() {
+        for (let y = 0; y < ROWS; y++) {
+            for (let x = 0; x < COLS; x++) {
+                const px = x * TILE_SIZE;
+                const py = y * TILE_SIZE;
+
+                if (grid[y][x] === TILE_SOLID) {
+                    drawSolidBlock(px, py);
+                } else if (grid[y][x] === TILE_DESTRUCTIBLE) {
+                    drawDestructibleBlock(px, py);
+                }
+            }
+        }
+    }
+
+    /**
+     * Draw an indestructible Mainframe Core block.
+     * Dark metallic block with bright neon circuit lines.
+     */
+    function drawSolidBlock(px, py) {
+        // Base dark metallic surface
+        ctx.fillStyle = '#1a1a2e';
+        ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+        // Inner gradient for depth
+        const grad = ctx.createLinearGradient(px, py, px + TILE_SIZE, py + TILE_SIZE);
+        grad.addColorStop(0, '#16213e');
+        grad.addColorStop(1, '#0f3460');
+        ctx.fillStyle = grad;
+        ctx.fillRect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+
+        // Neon circuit lines
+        ctx.strokeStyle = '#4a0e8f';
+        ctx.lineWidth = 2;
+        ctx.shadowBlur = 6;
+        ctx.shadowColor = '#7b2ff7';
+
+        // Horizontal circuit line
+        ctx.beginPath();
+        ctx.moveTo(px + 4, py + TILE_SIZE / 2);
+        ctx.lineTo(px + TILE_SIZE - 4, py + TILE_SIZE / 2);
+        ctx.stroke();
+
+        // Vertical circuit line
+        ctx.beginPath();
+        ctx.moveTo(px + TILE_SIZE / 2, py + 4);
+        ctx.lineTo(px + TILE_SIZE / 2, py + TILE_SIZE - 4);
+        ctx.stroke();
+
+        // Center node
+        ctx.fillStyle = '#7b2ff7';
+        ctx.shadowBlur = 10;
+        ctx.shadowColor = '#7b2ff7';
+        ctx.beginPath();
+        ctx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2, 3, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Border
+        ctx.strokeStyle = 'rgba(123, 47, 247, 0.4)';
+        ctx.lineWidth = 1;
+        ctx.shadowBlur = 0;
+        ctx.strokeRect(px + 0.5, py + 0.5, TILE_SIZE - 1, TILE_SIZE - 1);
+
+        ctx.shadowBlur = 0;
+    }
+
+    /**
+     * Draw a destructible Encrypted Firewall block.
+     * Glitchy orange/red digital block with scan-line effect.
+     */
+    function drawDestructibleBlock(px, py) {
+        const time = Date.now() / 1000;
+
+        // Base fiery color with slight animation
+        const flicker = Math.sin(time * 8 + px + py) * 0.15;
+        ctx.fillStyle = `rgba(${Math.floor(200 + flicker * 55)}, ${Math.floor(40 + flicker * 30)}, 10, 0.95)`;
+        ctx.fillRect(px, py, TILE_SIZE, TILE_SIZE);
+
+        // Digital noise pattern (horizontal glitch bars)
+        for (let i = 0; i < 6; i++) {
+            const barY = py + (i * TILE_SIZE / 6) + Math.sin(time * 5 + i) * 2;
+            const barH = 1 + Math.random();
+            ctx.fillStyle = `rgba(255, ${80 + Math.floor(Math.random() * 60)}, 0, ${0.3 + Math.random() * 0.4})`;
+            ctx.fillRect(px + 2, barY, TILE_SIZE - 4, barH);
+        }
+
+        // Lock icon (encrypted symbol)
+        ctx.strokeStyle = '#ffcc00';
+        ctx.lineWidth = 2;
+        ctx.shadowBlur = 8;
+        ctx.shadowColor = '#ff6600';
+
+        // Keyhole circle
+        ctx.beginPath();
+        ctx.arc(px + TILE_SIZE / 2, py + TILE_SIZE / 2 - 3, 6, 0, Math.PI * 2);
+        ctx.stroke();
+
+        // Keyhole slot
+        ctx.beginPath();
+        ctx.moveTo(px + TILE_SIZE / 2, py + TILE_SIZE / 2 + 3);
+        ctx.lineTo(px + TILE_SIZE / 2, py + TILE_SIZE / 2 + 9);
+        ctx.stroke();
+
+        // Border with glow
+        ctx.strokeStyle = '#ff6600';
+        ctx.lineWidth = 1;
+        ctx.shadowBlur = 5;
+        ctx.shadowColor = '#ff4400';
+        ctx.strokeRect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+
+        ctx.shadowBlur = 0;
+    }
+
+    /**
+     * Draw active power-ups with cyberpunk neon glow.
+     */
+    function drawPowerups() {
+        const time = Date.now() / 1000;
+
+        for (const pu of powerups) {
+            const px = pu.pixelX;
+            const py = pu.pixelY + Math.sin(time * 3 + pu.bobPhase) * 4; // Floating bob effect
+
+            let color, label;
+            switch (pu.type) {
+                case POWERUP_SPEED:
+                    color = '#00ff88';   // Neon Green for Overclock
+                    label = 'S';
+                    break;
+                case POWERUP_BOMB:
+                    color = '#ffaa00';   // Neon Orange for Buffer Expansion
+                    label = 'B';
+                    break;
+                case POWERUP_RADIUS:
+                    color = '#ff0066';   // Neon Red-Pink for Signal Amplifier
+                    label = 'R';
+                    break;
+            }
+
+            // Background hexagon
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.7)';
+            ctx.strokeStyle = color;
+            ctx.lineWidth = 2;
+            ctx.shadowBlur = 12;
+            ctx.shadowColor = color;
+
+            const radius = TILE_SIZE * 0.35;
+            ctx.beginPath();
+            for (let i = 0; i < 6; i++) {
+                const angle = (Math.PI / 3) * i - Math.PI / 6;
+                const hx = px + radius * Math.cos(angle);
+                const hy = py + radius * Math.sin(angle);
+                if (i === 0) ctx.moveTo(hx, hy);
+                else ctx.lineTo(hx, hy);
+            }
+            ctx.closePath();
+            ctx.fill();
+            ctx.stroke();
+
+            // Letter label
+            ctx.fillStyle = color;
+            ctx.font = `bold ${Math.floor(TILE_SIZE * 0.4)}px Courier New`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.fillText(label, px, py + 1);
+
+            ctx.shadowBlur = 0;
+        }
+    }
+
+    /**
+     * Draw EMP Spikes (bombs) with pulsing neon effect.
+     */
+    function drawBombs() {
+        const time = Date.now() / 1000;
+
+        for (const bomb of bombs) {
+            const px = bomb.pixelX;
+            const py = bomb.pixelY;
+
+            // Pulsing intensity based on remaining timer
+            const progress = 1 - (bomb.timer / BOMB_FUSE_TIME);
+            const pulse = Math.sin(time * 10) * 0.3 + 0.7;
+            const urgency = progress > 0.6 ? 1.5 : 1;
+
+            // Outer glow circle
+            const ownerColor = players[bomb.playerIndex].color;
+            ctx.shadowBlur = 15 * pulse * urgency;
+            ctx.shadowColor = ownerColor;
+
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.8)';
+            ctx.strokeStyle = ownerColor;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.arc(px, py, TILE_SIZE * 0.35, 0, Math.PI * 2);
+            ctx.fill();
+            ctx.stroke();
+
+            // Inner EMP symbol (lightning bolt representation)
+            ctx.strokeStyle = ownerColor;
+            ctx.lineWidth = 2;
+            ctx.beginPath();
+            ctx.moveTo(px + 4, py - 8);
+            ctx.lineTo(px - 2, py);
+            ctx.lineTo(px + 2, py);
+            ctx.lineTo(px - 4, py + 8);
+            ctx.lineTo(px + 4, py);
+            ctx.lineTo(px, py);
+            ctx.stroke();
+
+            // Timer ring (arc showing remaining time)
+            ctx.strokeStyle = `rgba(255, 255, 255, ${0.3 * pulse})`;
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.arc(px, py, TILE_SIZE * 0.38, -Math.PI / 2,
+                -Math.PI / 2 + (progress * Math.PI * 2));
+            ctx.stroke();
+
+            ctx.shadowBlur = 0;
+        }
+    }
+
+    /**
+     * Draw Data Glitch Cascade explosions with intense neon beams.
+     */
+    function drawExplosions() {
+        const time = Date.now() / 1000;
+
+        for (const exp of explosions) {
+            const px = exp.gridX * TILE_SIZE;
+            const py = exp.gridY * TILE_SIZE;
+
+            // Remaining life ratio
+            const lifeRatio = exp.timer / EXPLOSION_DURATION;
+            const flicker = Math.sin(time * 30) * 0.2 + 0.8;
+
+            // Core flash - bright white/yellow center
+            ctx.shadowBlur = 25 * flicker;
+            ctx.shadowColor = '#ffff00';
+            ctx.fillStyle = `rgba(255, 255, 100, ${lifeRatio * flicker})`;
+            ctx.fillRect(px + 4, py + 4, TILE_SIZE - 8, TILE_SIZE - 8);
+
+            // Neon beam glow - layered for intensity
+            ctx.shadowBlur = 30;
+            ctx.shadowColor = '#ff00ff';
+            ctx.fillStyle = `rgba(255, 0, 255, ${lifeRatio * 0.5 * flicker})`;
+            ctx.fillRect(px + 2, py + 2, TILE_SIZE - 4, TILE_SIZE - 4);
+
+            // Glitch digital fragments (random bright pixels)
+            for (let i = 0; i < 5; i++) {
+                const gx = px + Math.random() * TILE_SIZE;
+                const gy = py + Math.random() * TILE_SIZE;
+                const gs = 2 + Math.random() * 4;
+                ctx.fillStyle = `rgba(${Math.random() > 0.5 ? 255 : 0}, ${Math.random() > 0.7 ? 255 : 0}, 255, ${lifeRatio})`;
+                ctx.fillRect(gx, gy, gs, gs);
+            }
+
+            // Border flash
+            ctx.strokeStyle = `rgba(255, 255, 255, ${lifeRatio * flicker})`;
+            ctx.lineWidth = 2;
+            ctx.strokeRect(px + 1, py + 1, TILE_SIZE - 2, TILE_SIZE - 2);
+
+            ctx.shadowBlur = 0;
+        }
+    }
+
+    /**
+     * Draw particle effects.
+     */
+    function drawParticles() {
+        for (const p of particles) {
+            const alpha = p.life / p.maxLife;
+            ctx.fillStyle = p.color;
+            ctx.globalAlpha = alpha;
+            ctx.shadowBlur = 6;
+            ctx.shadowColor = p.color;
+            ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+        }
+        ctx.globalAlpha = 1;
+        ctx.shadowBlur = 0;
+    }
+
+    /**
+     * Draw a Netrunner player with cyberpunk styling.
+     */
+    function drawPlayer(player) {
+        const time = Date.now() / 1000;
+        const px = player.pixelX;
+        const py = player.pixelY;
+        const cx = px + TILE_SIZE / 2;
+        const cy = py + TILE_SIZE / 2;
+
+        const pulse = Math.sin(time * 4) * 0.15 + 0.85;
+
+        // Trail glow effect
+        ctx.shadowBlur = 20;
+        ctx.shadowColor = player.glowColor;
+
+        // Body - sleek diamond shape
+        ctx.fillStyle = player.color;
+        ctx.globalAlpha = pulse;
+        ctx.beginPath();
+        ctx.moveTo(cx, cy - TILE_SIZE * 0.4);          // Top
+        ctx.lineTo(cx + TILE_SIZE * 0.35, cy);         // Right
+        ctx.lineTo(cx, cy + TILE_SIZE * 0.4);          // Bottom
+        ctx.lineTo(cx - TILE_SIZE * 0.35, cy);         // Left
+        ctx.closePath();
+        ctx.fill();
+
+        // Inner glow core
+        ctx.fillStyle = '#ffffff';
+        ctx.globalAlpha = 0.8;
+        ctx.beginPath();
+        ctx.arc(cx, cy, 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Direction indicator (small triangle showing facing direction)
+        if (player.moveDir.x !== 0 || player.moveDir.y !== 0) {
+            const dirLen = TILE_SIZE * 0.15;
+            const tipX = cx + player.moveDir.x * dirLen;
+            const tipY = cy + player.moveDir.y * dirLen;
+            ctx.fillStyle = '#ffffff';
+            ctx.globalAlpha = 0.9;
+            ctx.beginPath();
+            ctx.arc(tipX, tipY, 2, 0, Math.PI * 2);
+            ctx.fill();
+        }
+
+        // Outer ring with neon glow
+        ctx.strokeStyle = player.color;
+        ctx.lineWidth = 1.5;
+        ctx.globalAlpha = pulse * 0.6;
+        ctx.shadowBlur = 12;
+        ctx.shadowColor = player.glowColor;
+        ctx.beginPath();
+        ctx.arc(cx, cy, TILE_SIZE * 0.42, 0, Math.PI * 2);
+        ctx.stroke();
+
+        ctx.globalAlpha = 1;
+        ctx.shadowBlur = 0;
+    }
+
+    /**
+     * Draw CRT-style scanline overlay for retro cyberpunk feel.
+     */
+    function drawScanlines() {
+        ctx.fillStyle = 'rgba(0, 0, 0, 0.08)';
+        for (let y = 0; y < CANVAS_HEIGHT; y += 3) {
+            ctx.fillRect(0, y, CANVAS_WIDTH, 1);
+        }
+
+        // Subtle vignette effect at edges
+        const vigGrad = ctx.createRadialGradient(
+            CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.3,
+            CANVAS_WIDTH / 2, CANVAS_HEIGHT / 2, CANVAS_WIDTH * 0.75
+        );
+        vigGrad.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        vigGrad.addColorStop(1, 'rgba(0, 0, 0, 0.3)');
+        ctx.fillStyle = vigGrad;
+        ctx.fillRect(0, 0, CANVAS_WIDTH, CANVAS_HEIGHT);
+    }
+
+    // ============================================================
+    //  START THE GAME
+    // ============================================================
+
+    // Initialize and start the game loop
+    initGame();
+    requestAnimationFrame(gameLoop);
+
+    </script>
+</body>
+</html>

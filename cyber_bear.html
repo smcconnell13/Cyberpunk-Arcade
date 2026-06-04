@@ -1,0 +1,1081 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BEAR & HONEY // CYBERPUNK ARCADE</title>
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+background: #000;
+display: flex;
+justify-content: center;
+align-items: center;
+height: 100vh;
+overflow: hidden;
+font-family: 'Courier New', monospace;
+}
+canvas {
+border: 2px solid #00ff41;
+box-shadow: 0 0 20px #00ff41, 0 0 40px #00ff4144;
+image-rendering: pixelated;
+}
+
+
+/* Cyberpunk arcade back link */
+#arcade-back-link {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  padding: 8px 16px;
+  color: rgba(0,255,255,0.6);
+  text-decoration: none;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  letter-spacing: 0.15em;
+  border: 1px solid rgba(0,255,255,0.3);
+  border-radius: 3px;
+  background: rgba(0,0,20,0.7);
+  backdrop-filter: blur(4px);
+  transition: all 0.25s ease;
+  z-index: 9999;
+  pointer-events: auto;
+}
+#arcade-back-link:hover {
+  color: #0ff;
+  border-color: #0ff;
+  box-shadow: 0 0 15px rgba(0,255,255,0.3), inset 0 0 15px rgba(0,255,255,0.1);
+  background: rgba(0,255,255,0.08);
+}
+</style>
+</head>
+<body>
+<a href="arcade.html" id="arcade-back-link"><< BACK TO ARCADE</a>
+<canvas id="gameCanvas"></canvas>
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// Canvas size
+canvas.width = 800;
+canvas.height = 600;
+
+// Game constants
+const GRAVITY = 0.6;
+const JUMP_FORCE = -14;
+const BEAR_SPEED = 5;
+const TILE = 40;
+
+// Colors
+const GREEN = '#00ff41';
+const AMBER = '#ffbf00';
+const RED = '#ff3333';
+const CYAN = '#00ffff';
+const DARK_BG = '#0a0a0a';
+const GRID_COLOR = '#00331122';
+
+// Game state
+let gameState = 'START'; // START, PLAYING, LEVEL_COMPLETE, GAME_OVER
+let score = 0;
+let lives = 3;
+let currentLevel = 0;
+let frameCount = 0;
+let particles = [];
+let screenShake = 0;
+let levelTransitionTimer = 0;
+
+// Input handling
+const keys = {};
+window.addEventListener('keydown', (e) => {
+    keys[e.code] = true;
+    if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.key)) {
+        e.preventDefault();
+    }
+});
+window.addEventListener('keyup', (e) => {
+    keys[e.code] = false;
+});
+
+// Bear character
+const bear = {
+    x: 50, y: 0, width: 36, height: 40,
+    vx: 0, vy: 0,
+    onGround: false,
+    facing: 1, // 1 = right, -1 = left
+    walkFrame: 0,
+    walkTimer: 0,
+    invincible: 0,
+    dead: false,
+    deathTimer: 0
+};
+
+// Platform class
+class Platform {
+    constructor(x, y, width, height) {
+        this.x = x; this.y = y;
+        this.width = width; this.height = height;
+    }
+    draw() {
+        // Neon outline with glow
+        ctx.shadowColor = CYAN;
+        ctx.shadowBlur = 8;
+        ctx.strokeStyle = CYAN;
+        ctx.lineWidth = 2;
+        ctx.strokeRect(this.x, this.y, this.width, this.height);
+        
+        // Fill with subtle pattern
+        ctx.fillStyle = '#001a33';
+        ctx.fillRect(this.x + 1, this.y + 1, this.width - 2, this.height - 2);
+        
+        // Top highlight line
+        ctx.fillStyle = CYAN;
+        ctx.fillRect(this.x, this.y, this.width, 2);
+        
+        ctx.shadowBlur = 0;
+    }
+}
+
+// Honey Hive class
+class HoneyHive {
+    constructor(x, y) {
+        this.x = x; this.y = y;
+        this.width = 32; this.height = 32;
+        this.collected = false;
+        this.pulsePhase = Math.random() * Math.PI * 2;
+    }
+    draw() {
+        if(this.collected) return;
+        this.pulsePhase += 0.05;
+        const pulse = 0.7 + 0.3 * Math.sin(this.pulsePhase);
+        
+        ctx.save();
+        ctx.shadowColor = AMBER;
+        ctx.shadowBlur = 15 * pulse;
+        
+        // Draw hexagonal hive
+        const cx = this.x + 16, cy = this.y + 16;
+        const r = 14;
+        ctx.beginPath();
+        for(let i = 0; i < 6; i++) {
+            const angle = Math.PI / 3 * i - Math.PI / 6;
+            const px = cx + r * Math.cos(angle);
+            const py = cy + r * Math.sin(angle);
+            if(i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fillStyle = AMBER;
+        ctx.fill();
+        ctx.strokeStyle = '#ffdd44';
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        
+        // Inner hexagon for detail
+        const r2 = 8;
+        ctx.beginPath();
+        for(let i = 0; i < 6; i++) {
+            const angle = Math.PI / 3 * i - Math.PI / 6;
+            const px = cx + r2 * Math.cos(angle);
+            const py = cy + r2 * Math.sin(angle);
+            if(i === 0) ctx.moveTo(px, py);
+            else ctx.lineTo(px, py);
+        }
+        ctx.closePath();
+        ctx.fillStyle = '#ffdd44';
+        ctx.fill();
+        
+        ctx.restore();
+    }
+}
+
+// Bee enemy class
+class Bee {
+    constructor(x, y, patrolLeft, patrolRight) {
+        this.startX = x; this.startY = y;
+        this.x = x; this.y = y;
+        this.width = 30; this.height = 24;
+        this.patrolLeft = patrolLeft;
+        this.patrolRight = patrolRight;
+        this.speed = 2 + currentLevel * 0.3;
+        this.direction = 1;
+        this.wingFrame = 0;
+        this.wingTimer = 0;
+    }
+    update() {
+        this.x += this.speed * this.direction;
+        this.wingTimer += 0.3;
+        
+        if(this.x <= this.patrolLeft || this.x >= this.patrolRight) {
+            this.direction *= -1;
+        }
+    }
+    draw() {
+        ctx.save();
+        const cx = this.x + 15, cy = this.y + 12;
+        
+        // Body (red neon)
+        ctx.shadowColor = RED;
+        ctx.shadowBlur = 10;
+        ctx.fillStyle = RED;
+        
+        // Thorax
+        ctx.beginPath();
+        ctx.ellipse(cx, cy, 8, 6, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Abdomen (striped)
+        ctx.fillStyle = '#220000';
+        ctx.beginPath();
+        ctx.ellipse(cx + this.direction * 7, cy, 7, 5, 0, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Stripe
+        ctx.fillStyle = RED;
+        ctx.fillRect(cx + this.direction * 5, cy - 4, 3, 8);
+        
+        // Wings (cyan, animated)
+        const wingOffset = Math.sin(this.wingTimer) * 6;
+        ctx.shadowColor = CYAN;
+        ctx.fillStyle = '#00ffff88';
+        ctx.beginPath();
+        ctx.ellipse(cx - 2, cy - 10 + wingOffset, 6, 3, -0.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(cx - 2, cy - 10 - wingOffset, 6, 3, 0.3, 0, Math.PI * 2);
+        ctx.fill();
+        
+        // Eye
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(cx + this.direction * 5, cy - 4, 3, 3);
+        
+        ctx.restore();
+    }
+}
+
+// Particle class
+class Particle {
+    constructor(x, y, color, type) {
+        this.x = x; this.y = y;
+        this.color = color;
+        this.type = type || 'spark';
+        this.vx = (Math.random() - 0.5) * 8;
+        this.vy = (Math.random() - 0.5) * 8 - 2;
+        this.life = 1.0;
+        this.decay = 0.02 + Math.random() * 0.03;
+        this.size = 2 + Math.random() * 4;
+    }
+    update() {
+        this.x += this.vx;
+        this.y += this.vy;
+        this.vy += 0.15;
+        this.life -= this.decay;
+    }
+    draw() {
+        ctx.save();
+        ctx.globalAlpha = this.life;
+        ctx.shadowColor = this.color;
+        ctx.shadowBlur = 6;
+        ctx.fillStyle = this.color;
+        
+        if(this.type === 'spark') {
+            ctx.fillRect(this.x - this.size/2, this.y - this.size/2, this.size, this.size);
+        } else if(this.type === 'glow') {
+            ctx.beginPath();
+            ctx.arc(this.x, this.y, this.size * this.life, 0, Math.PI * 2);
+            ctx.fill();
+        }
+        ctx.restore();
+    }
+}
+
+// Level definitions
+const levels = [
+    // Level 1 - Tutorial
+    {
+        platforms: [
+            new Platform(0, 560, 800, 40),       // ground
+            new Platform(200, 460, 160, 20),
+            new Platform(440, 380, 160, 20),
+            new Platform(150, 290, 120, 20),
+            new Platform(560, 290, 160, 20),
+        ],
+        hives: [
+            new HoneyHive(260, 428),
+            new HoneyHive(500, 348),
+            new HoneyHive(200, 258),
+            new HoneyHive(620, 258),
+        ],
+        bees: [
+            new Bee(380, 520, 100, 700),
+        ]
+    },
+    // Level 2 - Vertical challenge
+    {
+        platforms: [
+            new Platform(0, 560, 200, 40),       // start ground
+            new Platform(250, 480, 120, 20),
+            new Platform(100, 390, 100, 20),
+            new Platform(400, 420, 140, 20),
+            new Platform(560, 340, 120, 20),
+            new Platform(300, 260, 100, 20),
+            new Platform(600, 200, 160, 20),
+            new Platform(50, 200, 120, 20),
+        ],
+        hives: [
+            new HoneyHive(300, 448),
+            new HoneyHive(450, 388),
+            new HoneyHive(610, 308),
+            new HoneyHive(340, 228),
+            new HoneyHive(70, 168),
+        ],
+        bees: [
+            new Bee(250, 520, 200, 450),
+            new Bee(400, 380, 400, 540),
+            new Bee(600, 160, 600, 760),
+        ]
+    },
+    // Level 3 - Narrow paths
+    {
+        platforms: [
+            new Platform(0, 560, 120, 40),
+            new Platform(180, 500, 80, 20),
+            new Platform(320, 460, 80, 20),
+            new Platform(460, 500, 80, 20),
+            new Platform(600, 440, 120, 20),
+            new Platform(380, 340, 100, 20),
+            new Platform(160, 280, 100, 20),
+            new Platform(500, 240, 140, 20),
+            new Platform(260, 160, 100, 20),
+            new Platform(600, 140, 120, 20),
+        ],
+        hives: [
+            new HoneyHive(350, 428),
+            new HoneyHive(650, 408),
+            new HoneyHive(420, 308),
+            new HoneyHive(550, 208),
+            new HoneyHive(650, 108),
+        ],
+        bees: [
+            new Bee(180, 460, 180, 400),
+            new Bee(460, 460, 460, 680),
+            new Bee(380, 300, 380, 480),
+            new Bee(500, 200, 500, 640),
+        ]
+    },
+    // Level 4 - Honey overload
+    {
+        platforms: [
+            new Platform(0, 560, 160, 40),
+            new Platform(220, 500, 100, 20),
+            new Platform(380, 430, 100, 20),
+            new Platform(200, 360, 100, 20),
+            new Platform(500, 390, 100, 20),
+            new Platform(660, 320, 100, 20),
+            new Platform(440, 250, 100, 20),
+            new Platform(220, 200, 120, 20),
+            new Platform(600, 180, 100, 20),
+            new Platform(340, 120, 100, 20),
+        ],
+        hives: [
+            new HoneyHive(260, 468),
+            new HoneyHive(420, 398),
+            new HoneyHive(540, 358),
+            new HoneyHive(700, 288),
+            new HoneyHive(480, 218),
+            new HoneyHive(640, 148),
+            new HoneyHive(380, 88),
+        ],
+        bees: [
+            new Bee(220, 460, 220, 520),
+            new Bee(380, 390, 380, 580),
+            new Bee(200, 320, 200, 480),
+            new Bee(660, 280, 560, 760),
+            new Bee(440, 210, 340, 540),
+            new Bee(220, 160, 220, 440),
+        ]
+    },
+    // Level 5 - The Final Gauntlet
+    {
+        platforms: [
+            new Platform(0, 560, 100, 40),
+            new Platform(170, 500, 70, 20),
+            new Platform(300, 460, 70, 20),
+            new Platform(440, 500, 70, 20),
+            new Platform(580, 440, 90, 20),
+            new Platform(420, 340, 70, 20),
+            new Platform(260, 280, 70, 20),
+            new Platform(100, 220, 90, 20),
+            new Platform(320, 180, 80, 20),
+            new Platform(520, 140, 100, 20),
+            new Platform(680, 100, 100, 20),
+        ],
+        hives: [
+            new HoneyHive(330, 428),
+            new HoneyHive(480, 468),
+            new HoneyHive(620, 408),
+            new HoneyHive(450, 308),
+            new HoneyHive(140, 188),
+            new HoneyHive(570, 108),
+            new HoneyHive(720, 68),
+        ],
+        bees: [
+            new Bee(170, 460, 170, 400),
+            new Bee(440, 460, 300, 570),
+            new Bee(580, 400, 420, 770),
+            new Bee(420, 300, 260, 490),
+            new Bee(260, 240, 100, 370),
+            new Bee(100, 180, 100, 350),
+            new Bee(520, 100, 520, 780),
+        ]
+    }
+];
+
+// Draw the bear character
+function drawBear() {
+    if(bear.dead) return;
+    
+    // Invincibility flash
+    if(bear.invincible > 0 && Math.floor(frameCount / 4) % 2 === 0) return;
+    
+    ctx.save();
+    const bx = bear.x, by = bear.y;
+    const f = bear.facing;
+    
+    ctx.shadowColor = GREEN;
+    ctx.shadowBlur = 12;
+    ctx.fillStyle = GREEN;
+    
+    // Body
+    ctx.fillRect(bx + 8, by + 14, 20, 16);
+    
+    // Head
+    ctx.fillRect(bx + 10, by, 16, 16);
+    
+    // Ears
+    ctx.fillRect(bx + 10, by - 4, 5, 5);
+    ctx.fillRect(bx + 21, by - 4, 5, 5);
+    
+    // Nose (dark)
+    ctx.fillStyle = '#003311';
+    ctx.fillRect(bx + (f === 1 ? 22 : 10), by + 6, 4, 3);
+    
+    // Eye (dark with white dot)
+    ctx.fillStyle = '#003311';
+    ctx.fillRect(bx + (f === 1 ? 18 : 12), by + 4, 4, 4);
+    ctx.fillStyle = GREEN;
+    ctx.fillRect(bx + (f === 1 ? 20 : 12), by + 5, 2, 2);
+    
+    // Mouth/happy line
+    ctx.fillStyle = '#003311';
+    ctx.fillRect(bx + (f === 1 ? 18 : 12), by + 10, 6, 1);
+    
+    // Arms
+    ctx.fillStyle = GREEN;
+    if(bear.onGround && Math.abs(bear.vx) > 0.5) {
+        const armSwing = Math.sin(bear.walkTimer * 0.3) * 4;
+        ctx.fillRect(bx + 4, by + 16 + armSwing, 6, 10);
+        ctx.fillRect(bx + 26, by + 16 - armSwing, 6, 10);
+    } else if(!bear.onGround) {
+        // Jump pose - arms up
+        ctx.fillRect(bx + 4, by + 10, 6, 10);
+        ctx.fillRect(bx + 26, by + 10, 6, 10);
+    } else {
+        ctx.fillRect(bx + 4, by + 18, 6, 10);
+        ctx.fillRect(bx + 26, by + 18, 6, 10);
+    }
+    
+    // Legs
+    if(bear.onGround && Math.abs(bear.vx) > 0.5) {
+        const legSwing = Math.sin(bear.walkTimer * 0.3) * 5;
+        ctx.fillRect(bx + 8, by + 28, 7, 12 + legSwing - 5);
+        ctx.fillRect(bx + 21, by + 28, 7, 12 - legSwing + 5);
+    } else if(!bear.onGround) {
+        // Jump pose - legs spread
+        ctx.fillRect(bx + 4, by + 28, 8, 8);
+        ctx.fillRect(bx + 24, by + 26, 8, 10);
+    } else {
+        ctx.fillRect(bx + 8, by + 28, 7, 12);
+        ctx.fillRect(bx + 21, by + 28, 7, 12);
+    }
+    
+    // Tail (tiny)
+    const tailWag = Math.sin(frameCount * 0.1) * 2;
+    ctx.fillRect(bx + (f === 1 ? 4 : 28), by + 22 + tailWag, 6, 5);
+    
+    ctx.restore();
+}
+
+// Draw background grid
+function drawBackground() {
+    // Dark background
+    ctx.fillStyle = DARK_BG;
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    // Grid effect
+    ctx.strokeStyle = GRID_COLOR;
+    ctx.lineWidth = 1;
+    
+    const scrollX = (frameCount * 0.2) % TILE;
+    
+    for(let x = -scrollX; x < canvas.width; x += TILE) {
+        ctx.beginPath();
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, canvas.height);
+        ctx.stroke();
+    }
+    for(let y = 0; y < canvas.height; y += TILE) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(canvas.width, y);
+        ctx.stroke();
+    }
+    
+    // Scanline effect (subtle)
+    ctx.fillStyle = '#ffffff06';
+    for(let y = 0; y < canvas.height; y += 4) {
+        ctx.fillRect(0, y, canvas.width, 1);
+    }
+}
+
+// Draw HUD
+function drawHUD() {
+    ctx.save();
+    
+    // Top bar background
+    ctx.fillStyle = '#000000cc';
+    ctx.fillRect(0, 0, canvas.width, 40);
+    ctx.fillStyle = GREEN;
+    ctx.fillRect(0, 40, canvas.width, 1);
+    
+    // Score
+    ctx.shadowColor = GREEN;
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = GREEN;
+    ctx.font = '16px Courier New';
+    ctx.fillText(`SCORE: ${score.toString().padStart(6, '0')}`, 20, 26);
+    
+    // Level
+    ctx.fillStyle = CYAN;
+    ctx.shadowColor = CYAN;
+    ctx.fillText(`LEVEL: ${currentLevel + 1}/${levels.length}`, 250, 26);
+    
+    // Lives (bear icons)
+    ctx.fillStyle = GREEN;
+    ctx.shadowColor = GREEN;
+    let livesText = 'LIVES: ';
+    for(let i = 0; i < lives; i++) {
+        livesText += '[B] ';
+    }
+    ctx.fillText(livesText, 450, 26);
+    
+    // Hives remaining
+    const levelData = levels[currentLevel];
+    if(levelData) {
+        const remaining = levelData.hives.filter(h => !h.collected).length;
+        const total = levelData.hives.length;
+        ctx.fillStyle = AMBER;
+        ctx.shadowColor = AMBER;
+        ctx.fillText(`HONEY: ${remaining}/${total}`, 680, 26);
+    }
+    
+    ctx.restore();
+}
+
+// Draw start screen
+function drawStartScreen() {
+    drawBackground();
+    
+    ctx.save();
+    
+    // Title
+    ctx.shadowColor = GREEN;
+    ctx.shadowBlur = 20;
+    ctx.fillStyle = GREEN;
+    ctx.font = 'bold 48px Courier New';
+    ctx.textAlign = 'center';
+    ctx.fillText('BEAR & HONEY', canvas.width/2, 180);
+    
+    // Subtitle
+    ctx.shadowColor = AMBER;
+    ctx.shadowBlur = 15;
+    ctx.fillStyle = AMBER;
+    ctx.font = '20px Courier New';
+    ctx.fillText('// CYBERPUNK ARCADE //', canvas.width/2, 220);
+    
+    // Bear ASCII art
+    ctx.shadowColor = GREEN;
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = GREEN;
+    ctx.font = '14px Courier New';
+    const bearArt = [
+        '  (..)   (..)',
+        '  |  @@@@  |',
+        '  || ==== ||',
+        '  || ===== ||',
+        '   | ______ |',
+        '   | |    | |',
+        '   | |    | |',
+        '   |_|    |_|',
+    ];
+    bearArt.forEach((line, i) => {
+        ctx.fillText(line, canvas.width/2, 300 + i * 18);
+    });
+    
+    // Instructions
+    ctx.shadowBlur = 6;
+    ctx.fillStyle = CYAN;
+    ctx.font = '14px Courier New';
+    const instructions = [
+        'ARROW KEYS / WASD - MOVE',
+        'SPACE / UP - JUMP',
+        '',
+        'COLLECT ALL AMBER HONEY HIVES',
+        'AVOID THE RED NEON BEES',
+    ];
+    instructions.forEach((line, i) => {
+        ctx.fillText(line, canvas.width/2, 510 + i * 20);
+    });
+    
+    // Start prompt
+    const pulse = 0.5 + 0.5 * Math.sin(frameCount * 0.08);
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = GREEN;
+    ctx.shadowColor = GREEN;
+    ctx.shadowBlur = 15;
+    ctx.font = 'bold 22px Courier New';
+    ctx.fillText('[ PRESS SPACE TO START ]', canvas.width/2, 580);
+    
+    ctx.restore();
+}
+
+// Draw game over screen
+function drawGameOverScreen() {
+    drawBackground();
+    
+    // Overlay
+    ctx.fillStyle = '#000000aa';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    ctx.save();
+    ctx.textAlign = 'center';
+    
+    ctx.shadowColor = RED;
+    ctx.shadowBlur = 25;
+    ctx.fillStyle = RED;
+    ctx.font = 'bold 56px Courier New';
+    ctx.fillText('GAME OVER', canvas.width/2, 250);
+    
+    ctx.shadowColor = GREEN;
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = GREEN;
+    ctx.font = '24px Courier New';
+    ctx.fillText(`FINAL SCORE: ${score}`, canvas.width/2, 320);
+    ctx.fillText(`LEVEL REACHED: ${currentLevel + 1}`, canvas.width/2, 360);
+    
+    const pulse = 0.5 + 0.5 * Math.sin(frameCount * 0.08);
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = CYAN;
+    ctx.shadowColor = CYAN;
+    ctx.fillText('[ PRESS SPACE TO RETRY ]', canvas.width/2, 450);
+    
+    ctx.restore();
+}
+
+// Draw level complete screen
+function drawLevelCompleteScreen() {
+    drawBackground();
+    
+    // Overlay
+    ctx.fillStyle = '#000000aa';
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    
+    ctx.save();
+    ctx.textAlign = 'center';
+    
+    ctx.shadowColor = AMBER;
+    ctx.shadowBlur = 25;
+    ctx.fillStyle = AMBER;
+    ctx.font = 'bold 48px Courier New';
+    
+    if(currentLevel >= levels.length) {
+        ctx.fillText('YOU WIN!', canvas.width/2, 250);
+    } else {
+        ctx.fillText('LEVEL COMPLETE', canvas.width/2, 250);
+    }
+    
+    ctx.shadowColor = GREEN;
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = GREEN;
+    ctx.font = '24px Courier New';
+    ctx.fillText(`SCORE: ${score}`, canvas.width/2, 320);
+    
+    const pulse = 0.5 + 0.5 * Math.sin(frameCount * 0.08);
+    ctx.globalAlpha = pulse;
+    ctx.fillStyle = CYAN;
+    ctx.shadowColor = CYAN;
+    ctx.fillText('[ PRESS SPACE TO CONTINUE ]', canvas.width/2, 420);
+    
+    ctx.restore();
+}
+
+// Spawn particles
+function spawnParticles(x, y, color, count, type) {
+    for(let i = 0; i < count; i++) {
+        particles.push(new Particle(x, y, color, type));
+    }
+}
+
+// Collision detection (AABB)
+function aabb(a, b) {
+    return a.x < b.x + b.width &&
+           a.x + a.width > b.x &&
+           a.y < b.y + b.height &&
+           a.y + a.height > b.y;
+}
+
+// Reset bear to start position
+function resetBear() {
+    bear.x = 50;
+    bear.y = 480;
+    bear.vx = 0;
+    bear.vy = 0;
+    bear.onGround = false;
+    bear.facing = 1;
+    bear.walkFrame = 0;
+    bear.invincible = 90;
+    bear.dead = false;
+    bear.deathTimer = 0;
+}
+
+// Load level
+function loadLevel(index) {
+    if(index >= levels.length) return;
+    currentLevel = index;
+    
+    // Deep copy level data so we can modify it
+    const src = levels[index];
+    levels[index].platforms = src.platforms.map(p => new Platform(p.x, p.y, p.width, p.height));
+    levels[index].hives = src.hives.map(h => {
+        const nh = new HoneyHive(h.x, h.y);
+        nh.collected = false;
+        return nh;
+    });
+    levels[index].bees = src.bees.map(b => 
+        new Bee(b.startX, b.startY, b.patrolLeft, b.patrolRight)
+    );
+    
+    resetBear();
+}
+
+// Initialize original level data (keep pristine copies)
+const originalLevels = JSON.parse(JSON.stringify(levels));
+
+// Properly init levels with fresh data
+function initGame() {
+    score = 0;
+    lives = 3;
+    currentLevel = 0;
+    
+    // Reset all hives
+    for(let i = 0; i < levels.length; i++) {
+        const srcLevels = [
+            {
+                platforms: [
+                    {x:0,y:560,w:800,h:40},{x:200,y:460,w:160,h:20},{x:440,y:380,w:160,h:20},
+                    {x:150,y:290,w:120,h:20},{x:560,y:290,w:160,h:20}
+                ],
+                hives: [{x:260,y:428},{x:500,y:348},{x:200,y:258},{x:620,y:258}],
+                bees: [{x:380,y:520,pl:100,pr:700}]
+            },
+            {
+                platforms: [
+                    {x:0,y:560,w:200,h:40},{x:250,y:480,w:120,h:20},{x:100,y:390,w:100,h:20},
+                    {x:400,y:420,w:140,h:20},{x:560,y:340,w:120,h:20},{x:300,y:260,w:100,h:20},
+                    {x:600,y:200,w:160,h:20},{x:50,y:200,w:120,h:20}
+                ],
+                hives: [{x:300,y:448},{x:450,y:388},{x:610,y:308},{x:340,y:228},{x:70,y:168}],
+                bees: [{x:250,y:520,pl:200,pr:450},{x:400,y:380,pl:400,pr:540},{x:600,y:160,pl:600,pr:760}]
+            },
+            {
+                platforms: [
+                    {x:0,y:560,w:120,h:40},{x:180,y:500,w:80,h:20},{x:320,y:460,w:80,h:20},
+                    {x:460,y:500,w:80,h:20},{x:600,y:440,w:120,h:20},{x:380,y:340,w:100,h:20},
+                    {x:160,y:280,w:100,h:20},{x:500,y:240,w:140,h:20},{x:260,y:160,w:100,h:20},
+                    {x:600,y:140,w:120,h:20}
+                ],
+                hives: [{x:350,y:428},{x:650,y:408},{x:420,y:308},{x:550,y:208},{x:650,y:108}],
+                bees: [{x:180,y:460,pl:180,pr:400},{x:460,y:460,pl:460,pr:680},{x:380,y:300,pl:380,pr:480},{x:500,y:200,pl:500,pr:640}]
+            },
+            {
+                platforms: [
+                    {x:0,y:560,w:160,h:40},{x:220,y:500,w:100,h:20},{x:380,y:430,w:100,h:20},
+                    {x:200,y:360,w:100,h:20},{x:500,y:390,w:100,h:20},{x:660,y:320,w:100,h:20},
+                    {x:440,y:250,w:100,h:20},{x:220,y:200,w:120,h:20},{x:600,y:180,w:100,h:20},
+                    {x:340,y:120,w:100,h:20}
+                ],
+                hives: [{x:260,y:468},{x:420,y:398},{x:540,y:358},{x:700,y:288},{x:480,y:218},{x:640,y:148},{x:380,y:88}],
+                bees: [{x:220,y:460,pl:220,pr:520},{x:380,y:390,pl:380,pr:580},{x:200,y:320,pl:200,pr:480},{x:660,y:280,pl:560,pr:760},{x:440,y:210,pl:340,pr:540},{x:220,y:160,pl:220,pr:440}]
+            },
+            {
+                platforms: [
+                    {x:0,y:560,w:100,h:40},{x:170,y:500,w:70,h:20},{x:300,y:460,w:70,h:20},
+                    {x:440,y:500,w:70,h:20},{x:580,y:440,w:90,h:20},{x:420,y:340,w:70,h:20},
+                    {x:260,y:280,w:70,h:20},{x:100,y:220,w:90,h:20},{x:320,y:180,w:80,h:20},
+                    {x:520,y:140,w:100,h:20},{x:680,y:100,w:100,h:20}
+                ],
+                hives: [{x:330,y:428},{x:480,y:468},{x:620,y:408},{x:450,y:308},{x:140,y:188},{x:570,y:108},{x:720,y:68}],
+                bees: [{x:170,y:460,pl:170,pr:400},{x:440,y:460,pl:300,pr:570},{x:580,y:400,pl:420,pr:770},{x:420,y:300,pl:260,pr:490},{x:260,y:240,pl:100,pr:370},{x:100,y:180,pl:100,pr:350},{x:520,y:100,pl:520,pr:780}]
+            }
+        ];
+        
+        const ld = srcLevels[i];
+        levels[i].platforms = ld.platforms.map(p => new Platform(p.x, p.y, p.w, p.h));
+        levels[i].hives = ld.hives.map(h => {
+            const nh = new HoneyHive(h.x, h.y);
+            nh.collected = false;
+            return nh;
+        });
+        levels[i].bees = ld.bees.map(b => new Bee(b.x, b.y, b.pl, b.pr));
+    }
+    
+    resetBear();
+}
+
+// Handle bear hit
+function bearHit() {
+    if(bear.invincible > 0 || bear.dead) return;
+    
+    lives--;
+    screenShake = 15;
+    spawnParticles(bear.x + 18, bear.y + 20, RED, 20, 'spark');
+    
+    if(lives <= 0) {
+        bear.dead = true;
+        bear.deathTimer = 120;
+    } else {
+        resetBear();
+    }
+}
+
+// Update game logic
+function update() {
+    frameCount++;
+    
+    if(gameState === 'START') {
+        if(keys['Space']) {
+            initGame();
+            gameState = 'PLAYING';
+        }
+    } else if(gameState === 'GAME_OVER') {
+        bear.deathTimer--;
+        if(keys['Space'] && bear.deathTimer <= 0) {
+            gameState = 'START';
+            frameCount = 0;
+        }
+    } else if(gameState === 'LEVEL_COMPLETE') {
+        levelTransitionTimer--;
+        if(keys['Space'] && levelTransitionTimer <= 0) {
+            if(currentLevel + 1 < levels.length) {
+                loadLevel(currentLevel + 1);
+            } else {
+                gameState = 'START';
+                frameCount = 0;
+            }
+            gameState = 'PLAYING';
+        }
+    } else if(gameState === 'PLAYING') {
+        // Bear movement
+        bear.vx = 0;
+        if(keys['ArrowLeft'] || keys['KeyA']) {
+            bear.vx = -BEAR_SPEED;
+            bear.facing = -1;
+        }
+        if(keys['ArrowRight'] || keys['KeyD']) {
+            bear.vx = BEAR_SPEED;
+            bear.facing = 1;
+        }
+        
+        // Jump
+        if((keys['Space'] || keys['ArrowUp'] || keys['KeyW']) && bear.onGround) {
+            bear.vy = JUMP_FORCE;
+            bear.onGround = false;
+            spawnParticles(bear.x + 18, bear.y + 40, GREEN, 5, 'glow');
+        }
+        
+        // Gravity
+        bear.vy += GRAVITY;
+        
+        // Move X
+        bear.x += bear.vx;
+        
+        // Walk animation
+        if(Math.abs(bear.vx) > 0.5 && bear.onGround) {
+            bear.walkTimer++;
+        }
+        
+        // Clamp to canvas
+        if(bear.x < 0) bear.x = 0;
+        if(bear.x + bear.width > canvas.width) bear.x = canvas.width - bear.width;
+        
+        // Platform collision X
+        const levelData = levels[currentLevel];
+        for(const plat of levelData.platforms) {
+            if(aabb(bear, plat)) {
+                if(bear.vx > 0) {
+                    bear.x = plat.x - bear.width;
+                } else if(bear.vx < 0) {
+                    bear.x = plat.x + plat.width;
+                }
+            }
+        }
+        
+        // Move Y
+        bear.y += bear.vy;
+        bear.onGround = false;
+        
+        // Platform collision Y
+        for(const plat of levelData.platforms) {
+            if(aabb(bear, plat)) {
+                if(bear.vy > 0) {
+                    bear.y = plat.y - bear.height;
+                    bear.vy = 0;
+                    bear.onGround = true;
+                } else if(bear.vy < 0) {
+                    bear.y = plat.y + plat.height;
+                    bear.vy = 0;
+                }
+            }
+        }
+        
+        // Fall death
+        if(bear.y > canvas.height + 50) {
+            bearHit();
+            if(!bear.dead) {
+                resetBear();
+            }
+        }
+        
+        // Invincibility timer
+        if(bear.invincible > 0) bear.invincible--;
+        
+        // Update bees
+        for(const bee of levelData.bees) {
+            bee.update();
+            
+            // Bee collision with bear
+            const beeBox = {x: bee.x, y: bee.y, width: bee.width, height: bee.height};
+            if(aabb(bear, beeBox)) {
+                bearHit();
+            }
+        }
+        
+        // Hive collection
+        for(const hive of levelData.hives) {
+            if(hive.collected) continue;
+            const hiveBox = {x: hive.x, y: hive.y, width: hive.width, height: hive.height};
+            if(aabb(bear, hiveBox)) {
+                hive.collected = true;
+                score += 100;
+                spawnParticles(hive.x + 16, hive.y + 16, AMBER, 15, 'glow');
+                spawnParticles(hive.x + 16, hive.y + 16, AMBER, 10, 'spark');
+                
+                // Check if all collected
+                const remaining = levelData.hives.filter(h => !h.collected).length;
+                if(remaining === 0) {
+                    score += 500; // Level bonus
+                    gameState = 'LEVEL_COMPLETE';
+                    levelTransitionTimer = 60;
+                    spawnParticles(canvas.width/2, canvas.height/2, AMBER, 40, 'glow');
+                }
+            }
+        }
+        
+        // Death handling
+        if(bear.dead) {
+            bear.deathTimer--;
+            if(bear.deathTimer <= 0) {
+                gameState = 'GAME_OVER';
+            }
+        }
+    }
+    
+    // Update particles
+    particles.forEach(p => p.update());
+    particles = particles.filter(p => p.life > 0);
+    
+    // Screen shake decay
+    if(screenShake > 0) screenShake *= 0.85;
+}
+
+// Draw game
+function draw() {
+    ctx.save();
+    
+    // Apply screen shake
+    if(screenShake > 0.5) {
+        const sx = (Math.random() - 0.5) * screenShake;
+        const sy = (Math.random() - 0.5) * screenShake;
+        ctx.translate(sx, sy);
+    }
+    
+    if(gameState === 'START') {
+        drawStartScreen();
+    } else if(gameState === 'GAME_OVER') {
+        drawBackground();
+        // Still draw game elements faded
+        ctx.globalAlpha = 0.3;
+        const levelData = levels[currentLevel] || levels[0];
+        levelData.platforms.forEach(p => p.draw());
+        levelData.hives.forEach(h => h.draw());
+        levelData.bees.forEach(b => b.draw());
+        ctx.globalAlpha = 1;
+        drawGameOverScreen();
+    } else if(gameState === 'LEVEL_COMPLETE') {
+        drawBackground();
+        const levelData = levels[currentLevel];
+        levelData.platforms.forEach(p => p.draw());
+        levelData.hives.forEach(h => h.draw());
+        levelData.bees.forEach(b => b.draw());
+        drawBear();
+        drawLevelCompleteScreen();
+    } else {
+        // PLAYING state
+        drawBackground();
+        
+        const levelData = levels[currentLevel];
+        
+        // Draw platforms
+        levelData.platforms.forEach(p => p.draw());
+        
+        // Draw hives
+        levelData.hives.forEach(h => h.draw());
+        
+        // Draw bees
+        levelData.bees.forEach(b => b.draw());
+        
+        // Draw bear
+        drawBear();
+        
+        // Draw particles
+        particles.forEach(p => p.draw());
+        
+        // Draw HUD
+        drawHUD();
+    }
+    
+    ctx.restore();
+}
+
+// Game loop
+function gameLoop() {
+    update();
+    draw();
+    requestAnimationFrame(gameLoop);
+}
+
+// Start the game loop
+gameLoop();
+</script>
+</body>
+</html>

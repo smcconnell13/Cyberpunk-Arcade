@@ -1,0 +1,1574 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CYBER DASH - Neon Runner</title>
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+  }
+
+  body {
+    background: #000;
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    height: 100vh;
+    overflow: hidden;
+    font-family: 'Courier New', monospace;
+  }
+
+  #gameContainer {
+    position: relative;
+    width: 800px;
+    height: 500px;
+    border: 2px solid #0ff;
+    box-shadow: 0 0 20px #0ff, 0 0 40px #0ff, inset 0 0 20px rgba(0, 255, 255, 0.1);
+    border-radius: 4px;
+  }
+
+  canvas {
+    display: block;
+    background: #0a0a1a;
+  }
+
+  #ui {
+    position: absolute;
+    top: 10px;
+    left: 10px;
+    color: #0ff;
+    font-size: 18px;
+    text-shadow: 0 0 10px #0ff, 0 0 20px #0ff;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  #score {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    color: #f0f;
+    font-size: 18px;
+    text-shadow: 0 0 10px #f0f, 0 0 20px #f0f;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  #overlay {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    background: rgba(0, 0, 10, 0.85);
+    z-index: 20;
+    transition: opacity 0.3s;
+    overflow-y: auto;
+  }
+
+  #overlay.hidden {
+    opacity: 0;
+    pointer-events: none;
+  }
+
+  #title {
+    font-size: 52px;
+    font-weight: bold;
+    color: #0ff;
+    text-shadow: 0 0 10px #0ff, 0 0 30px #0ff, 0 0 60px #08f, 0 0 100px #08f;
+    margin-bottom: 5px;
+    letter-spacing: 8px;
+    animation: flicker 3s infinite alternate;
+  }
+
+  #subtitle {
+    font-size: 16px;
+    color: #f0f;
+    text-shadow: 0 0 10px #f0f, 0 0 20px #f0f;
+    margin-bottom: 20px;
+    letter-spacing: 4px;
+  }
+
+  .btn-group {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 10px;
+    margin-bottom: 15px;
+  }
+
+  #startBtn {
+    padding: 15px 50px;
+    font-size: 22px;
+    font-family: 'Courier New', monospace;
+    background: transparent;
+    color: #0ff;
+    border: 2px solid #0ff;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 4px;
+    box-shadow: 0 0 15px #0ff, inset 0 0 15px rgba(0, 255, 255, 0.1);
+    transition: all 0.3s;
+    border-radius: 4px;
+  }
+
+  #startBtn:hover {
+    background: rgba(0, 255, 255, 0.15);
+    box-shadow: 0 0 30px #0ff, 0 0 60px #0ff, inset 0 0 30px rgba(0, 255, 255, 0.2);
+    transform: scale(1.05);
+  }
+
+  #customLevelBtn {
+    padding: 10px 30px;
+    font-size: 14px;
+    font-family: 'Courier New', monospace;
+    background: transparent;
+    color: #f0f;
+    border: 1px solid rgba(255, 0, 255, 0.5);
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    box-shadow: 0 0 8px rgba(255, 0, 255, 0.3);
+    transition: all 0.3s;
+    border-radius: 4px;
+  }
+
+  #customLevelBtn:hover {
+    background: rgba(255, 0, 255, 0.1);
+    box-shadow: 0 0 20px rgba(255, 0, 255, 0.5);
+    transform: scale(1.03);
+  }
+
+  #retryBtn {
+    padding: 10px 30px;
+    font-size: 16px;
+    font-family: 'Courier New', monospace;
+    background: transparent;
+    color: #0f0;
+    border: 2px solid #0f0;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 3px;
+    box-shadow: 0 0 15px #0f0, inset 0 0 15px rgba(0, 255, 0, 0.1);
+    transition: all 0.3s;
+    border-radius: 4px;
+    display: none;
+    margin-bottom: 5px;
+  }
+
+  #retryBtn:hover {
+    background: rgba(0, 255, 0, 0.15);
+    box-shadow: 0 0 30px #0f0, 0 0 60px #0f0, inset 0 0 30px rgba(0, 255, 0, 0.2);
+    transform: scale(1.05);
+  }
+
+  #retryBtn.on-death {
+    color: #f80;
+    border-color: #f80;
+    box-shadow: 0 0 15px #f80, inset 0 0 15px rgba(255, 136, 0, 0.1);
+  }
+
+  #retryBtn.on-death:hover {
+    background: rgba(255, 136, 0, 0.15);
+    box-shadow: 0 0 30px #f80, 0 0 60px #f80, inset 0 0 30px rgba(255, 136, 0, 0.2);
+  }
+
+  #editorBtn {
+    padding: 8px 20px;
+    font-size: 12px;
+    font-family: 'Courier New', monospace;
+    background: transparent;
+    color: #ff0;
+    border: 1px solid rgba(255, 255, 0, 0.4);
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    transition: all 0.3s;
+    border-radius: 3px;
+  }
+
+  #editorBtn:hover {
+    background: rgba(255, 255, 0, 0.1);
+    box-shadow: 0 0 15px rgba(255, 255, 0, 0.4);
+  }
+
+  #gameOverText {
+    font-size: 42px;
+    color: #f04;
+    text-shadow: 0 0 10px #f04, 0 0 30px #f04, 0 0 60px #f04;
+    margin-bottom: 10px;
+    letter-spacing: 6px;
+    display: none;
+  }
+
+  #levelCompleteText {
+    font-size: 28px;
+    color: #0f0;
+    text-shadow: 0 0 10px #0f0, 0 0 30px #0f0, 0 0 60px #0f0;
+    margin-bottom: 5px;
+    letter-spacing: 4px;
+    display: none;
+  }
+
+  #levelCompleteSub {
+    font-size: 14px;
+    color: #ff0;
+    text-shadow: 0 0 8px #ff0;
+    margin-bottom: 20px;
+    letter-spacing: 2px;
+    display: none;
+  }
+
+  #finalScore {
+    font-size: 20px;
+    color: #ff0;
+    text-shadow: 0 0 10px #ff0, 0 0 20px #ff0;
+    margin-bottom: 10px;
+    display: none;
+  }
+
+  #highScore {
+    font-size: 16px;
+    color: #0f0;
+    text-shadow: 0 0 10px #0f0, 0 0 20px #0f0;
+    margin-bottom: 10px;
+    letter-spacing: 2px;
+  }
+
+  #customLevelName {
+    font-size: 14px;
+    color: #f0f;
+    text-shadow: 0 0 8px #f0f;
+    margin-bottom: 15px;
+    letter-spacing: 2px;
+    display: none;
+  }
+
+  #controls {
+    font-size: 12px;
+    color: #888;
+    text-shadow: 0 0 5px #888;
+    margin-top: 15px;
+    letter-spacing: 2px;
+  }
+
+  #deathCounter {
+    position: absolute;
+    top: 35px;
+    right: 10px;
+    color: #f80;
+    font-size: 14px;
+    text-shadow: 0 0 10px #f80, 0 0 20px #f80;
+    z-index: 10;
+    pointer-events: none;
+  }
+
+  #levelMode {
+    position: absolute;
+    top: 55px;
+    right: 10px;
+    font-size: 12px;
+    text-shadow: 0 0 8px currentColor;
+    z-index: 10;
+    pointer-events: none;
+    letter-spacing: 1px;
+  }
+
+  #progressBar {
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    height: 3px;
+    background: #0f0;
+    box-shadow: 0 0 10px #0f0, 0 0 20px #0f0;
+    z-index: 10;
+    pointer-events: none;
+    transition: width 0.3s;
+    display: none;
+  }
+
+  /* Custom level selector modal */
+  #levelSelector {
+    display: none;
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background: rgba(0, 0, 10, 0.95);
+    z-index: 30;
+    flex-direction: column;
+    justify-content: center;
+    align-items: center;
+    gap: 10px;
+    overflow-y: auto;
+    padding: 20px;
+  }
+
+  #levelSelector.show {
+    display: flex;
+  }
+
+  #levelSelector h2 {
+    color: #f0f;
+    text-shadow: 0 0 15px #f0f, 0 0 30px #f0f;
+    margin-bottom: 15px;
+    letter-spacing: 4px;
+    font-size: 24px;
+  }
+
+  .level-card {
+    width: 500px;
+    padding: 15px 20px;
+    background: rgba(0, 0, 30, 0.8);
+    border: 1px solid rgba(255, 0, 255, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    transition: all 0.2s;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .level-card:hover {
+    background: rgba(255, 0, 255, 0.1);
+    border-color: #f0f;
+    box-shadow: 0 0 15px rgba(255, 0, 255, 0.3);
+    transform: scale(1.02);
+  }
+
+  .level-card .name {
+    color: #f0f;
+    font-size: 16px;
+    text-shadow: 0 0 8px #f0f;
+    letter-spacing: 2px;
+  }
+
+  .level-card .info {
+    color: #888;
+    font-size: 11px;
+    letter-spacing: 1px;
+  }
+
+  #backBtn {
+    padding: 10px 30px;
+    font-size: 14px;
+    font-family: 'Courier New', monospace;
+    background: transparent;
+    color: #ff0;
+    border: 1px solid rgba(255, 255, 0, 0.5);
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    transition: all 0.3s;
+    border-radius: 4px;
+    margin-top: 10px;
+  }
+
+  #backBtn:hover {
+    background: rgba(255, 255, 0, 0.1);
+    box-shadow: 0 0 15px rgba(255, 255, 0, 0.4);
+  }
+
+  .no-levels {
+    color: #888;
+    font-size: 13px;
+    letter-spacing: 2px;
+    margin-bottom: 10px;
+  }
+
+  @keyframes flicker {
+    0%, 95%, 100% { opacity: 1; }
+    96% { opacity: 0.7; }
+    97% { opacity: 1; }
+    98% { opacity: 0.5; }
+    99% { opacity: 1; }
+  }
+
+  .scanline {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+    z-index: 15;
+    background: repeating-linear-gradient(
+      0deg,
+      rgba(0, 0, 0, 0.03) 0px,
+      rgba(0, 0, 0, 0.03) 1px,
+      transparent 1px,
+      transparent 3px
+    );
+  }
+
+  /* Cyberpunk arcade back link */
+  #arcade-back-link {
+    position: fixed;
+    top: 12px;
+    right: 12px;
+    z-index: 9999;
+    font-family: 'Courier New', monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: rgba(0,255,255,0.5);
+    text-decoration: none;
+    letter-spacing: 0.15em;
+    padding: 6px 14px;
+    border: 1px solid rgba(0,255,255,0.15);
+    border-radius: 3px;
+    background: rgba(0,0,20,0.7);
+    backdrop-filter: blur(4px);
+    transition: all 0.25s ease;
+    pointer-events: auto;
+  }
+
+  #arcade-back-link:hover {
+    color: #0ff;
+    border-color: #0ff;
+    text-shadow: 0 0 8px #0ff;
+    box-shadow: 0 0 15px rgba(0,255,255,0.3), inset 0 0 15px rgba(0,255,255,0.1);
+    background: rgba(0,255,255,0.08);
+  }
+</style>
+</head>
+<body>
+<div id="gameContainer">
+  <canvas id="gameCanvas" width="800" height="500"></canvas>
+  <div id="ui">LEVEL: <span id="levelDisplay">1</span></div>
+  <div id="score">SCORE: <span id="scoreDisplay">0</span></div>
+  <div id="deathCounter">DEATHS: <span id="deathsDisplay">0</span></div>
+  <div id="levelMode"></div>
+  <div id="progressBar"></div>
+  <div class="scanline"></div>
+
+  <!-- Main overlay -->
+  <div id="overlay">
+    <div id="title">CYBER DASH</div>
+    <div id="subtitle">[ NEON RUNNER ]</div>
+    <div id="gameOverText">SYSTEM CRASH</div>
+    <div id="levelCompleteText">LEVEL COMPLETE</div>
+    <div id="levelCompleteSub"></div>
+    <div id="finalScore">SCORE: 0</div>
+    <div id="highScore">HIGH SCORE: 0</div>
+    <div id="customLevelName"></div>
+    <div class="btn-group">
+      <button id="retryBtn">↻ RETRY LEVEL</button>
+      <button id="startBtn">JACK IN</button>
+      <button id="customLevelBtn">CUSTOM LEVELS</button>
+      <button id="editorBtn">▶ LEVEL EDITOR</button>
+    </div>
+    <div id="controls">[SPACE] / [CLICK] TO JUMP &nbsp;|&nbsp; [DOUBLE JUMP] ENABLED</div>
+    <a href="arcade.html" id="arcade-back-link"><< BACK TO ARCADE</a>
+  </div>
+
+  <!-- Custom level selector -->
+  <div id="levelSelector">
+    <h2>CUSTOM LEVELS</h2>
+    <div id="levelList"></div>
+    <button id="backBtn">◄ BACK</button>
+  </div>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const startBtn = document.getElementById('startBtn');
+const customLevelBtn = document.getElementById('customLevelBtn');
+const editorBtn = document.getElementById('editorBtn');
+const retryBtn = document.getElementById('retryBtn');
+const levelSelector = document.getElementById('levelSelector');
+const levelList = document.getElementById('levelList');
+const backBtn = document.getElementById('backBtn');
+const gameOverText = document.getElementById('gameOverText');
+const levelCompleteText = document.getElementById('levelCompleteText');
+const levelCompleteSub = document.getElementById('levelCompleteSub');
+const finalScore = document.getElementById('finalScore');
+const highScoreDisplay = document.getElementById('highScore');
+const scoreDisplay = document.getElementById('scoreDisplay');
+const deathsDisplay = document.getElementById('deathsDisplay');
+const levelDisplay = document.getElementById('levelDisplay');
+const levelModeDisplay = document.getElementById('levelMode');
+const customLevelNameDisplay = document.getElementById('customLevelName');
+const progressBar = document.getElementById('progressBar');
+
+// Audio context for sound effects
+let audioCtx = null;
+
+function initAudio() {
+  if (!audioCtx) {
+    audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+  }
+}
+
+function playSound(freq, type, duration, volume = 0.15) {
+  if (!audioCtx) return;
+  const osc = audioCtx.createOscillator();
+  const gain = audioCtx.createGain();
+  osc.type = type;
+  osc.frequency.setValueAtTime(freq, audioCtx.currentTime);
+  gain.gain.setValueAtTime(volume, audioCtx.currentTime);
+  gain.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + duration);
+  osc.connect(gain);
+  gain.connect(audioCtx.destination);
+  osc.start();
+  osc.stop(audioCtx.currentTime + duration);
+}
+
+function playJumpSound() {
+  playSound(520, 'square', 0.12, 0.1);
+  setTimeout(() => playSound(780, 'square', 0.08, 0.08), 50);
+}
+
+function playDeathSound() {
+  playSound(200, 'sawtooth', 0.3, 0.15);
+  setTimeout(() => playSound(120, 'sawtooth', 0.4, 0.12), 100);
+  setTimeout(() => playSound(80, 'square', 0.5, 0.1), 200);
+}
+
+function playScoreSound() {
+  playSound(880, 'sine', 0.1, 0.08);
+  setTimeout(() => playSound(1100, 'sine', 0.1, 0.06), 60);
+}
+
+function playLevelCompleteSound() {
+  playSound(523, 'square', 0.15, 0.1);
+  setTimeout(() => playSound(659, 'square', 0.15, 0.1), 100);
+  setTimeout(() => playSound(784, 'square', 0.15, 0.1), 200);
+  setTimeout(() => playSound(1047, 'square', 0.3, 0.12), 300);
+}
+
+function playBeat() {
+  playSound(80, 'square', 0.05, 0.06);
+}
+
+// Game state
+let gameState = 'menu'; // menu, playing, dead, levelComplete
+let score = 0;
+let highScore = parseInt(localStorage.getItem('cyberDashHighScore')) || 0;
+let deaths = 0;
+let gameSpeed = 4;
+let frameCount = 0;
+let beatTimer = 0;
+let screenShake = 0;
+let screenShakeX = 0;
+let screenShakeY = 0;
+
+// Custom level state
+let customLevelMode = false; // true when playing a custom level
+let customLevelData = null;
+let customObstaclesPlaced = []; // Obstacles spawned from custom level
+let customObstaclesIndex = 0; // Next obstacle index to spawn
+let customLevelTotalObstacles = 0;
+let transitioningToProcedural = false;
+
+// Player
+const player = {
+  x: 120,
+  y: 350,
+  width: 30,
+  height: 30,
+  vy: 0,
+  grounded: true,
+  jumps: 0,
+  maxJumps: 2,
+  rotation: 0,
+  trail: [],
+  color: '#0ff',
+  glowColor: '#0ff',
+  alive: true
+};
+
+const GRAVITY = 0.65;
+const JUMP_FORCE = -12;
+const GROUND_Y = 380;
+const FLOOR_HEIGHT = 120;
+
+// Obstacle templates (matching editor)
+const obstacleTemplates = {
+  spike: { width: 30, height: 30, color: '#f04' },
+  block: { width: 30, height: 60, color: '#f0f' },
+  double_spike: { width: 60, height: 30, color: '#f04' },
+  platform: { width: 90, height: 15, color: '#0f0' },
+  laser: { width: 10, height: 60, color: '#f80' }
+};
+
+// Obstacles
+let obstacles = [];
+let particles = [];
+let bgStars = [];
+let buildings = [];
+
+// Initialize background elements
+function initBackground() {
+  bgStars = [];
+  for (let i = 0; i < 80; i++) {
+    bgStars.push({
+      x: Math.random() * 800,
+      y: Math.random() * (GROUND_Y - 50),
+      size: Math.random() * 2 + 0.5,
+      speed: Math.random() * 0.5 + 0.2,
+      brightness: Math.random(),
+      color: ['#0ff', '#f0f', '#08f', '#f04', '#ff0'][Math.floor(Math.random() * 5)]
+    });
+  }
+
+  buildings = [];
+  for (let i = 0; i < 15; i++) {
+    buildings.push({
+      x: i * 80 + Math.random() * 30,
+      width: 30 + Math.random() * 40,
+      height: 40 + Math.random() * 120,
+      color: Math.random() > 0.5 ? '#0ff' : '#f0f',
+      brightness: Math.random() * 0.3 + 0.1
+    });
+  }
+}
+
+// Get saved levels from localStorage
+function getSavedLevels() {
+  try {
+    return JSON.parse(localStorage.getItem('cyberDashLevels') || '[]');
+  } catch {
+    return [];
+  }
+}
+
+// Convert editor block format to game obstacle
+function createObstacleFromBlock(block) {
+  const template = obstacleTemplates[block.tool];
+  if (!template) return null;
+
+  // Adjust dimensions for game play
+  let width, height;
+  switch (block.tool) {
+    case 'spike': width = 28; height = 28; break;
+    case 'block': width = 30; height = 40; break;
+    case 'double_spike': width = 60; height = 28; break;
+    case 'platform': width = 90; height = 15; break;
+    case 'laser': width = 10; height = 60; break;
+    default: width = template.width; height = template.height;
+  }
+
+  const obstacle = {
+    x: block.pixelX + 150, // Offset so player starts at x=120 and first obstacle is visible
+    y: block.tool === 'platform' ? block.pixelY : (block.pixelY || (GROUND_Y - height)),
+    width: width,
+    height: height,
+    type: block.tool,
+    color: template.color,
+    passed: false,
+    animOffset: Math.random() * Math.PI * 2,
+    customLevel: true
+  };
+
+  if (block.tool === 'laser') {
+    obstacle.timer = 0;
+    obstacle.active = true;
+  }
+
+  return obstacle;
+}
+
+function resetGame(forCustomLevel, levelData) {
+  player.y = GROUND_Y - player.height;
+  player.vy = 0;
+  player.grounded = true;
+  player.jumps = 0;
+  player.rotation = 0;
+  player.trail = [];
+  player.alive = true;
+  player.color = '#0ff';
+
+  obstacles = [];
+  particles = [];
+  score = 0;
+  frameCount = 0;
+  screenShake = 0;
+  transitioningToProcedural = false;
+
+  scoreDisplay.textContent = '0';
+  deathsDisplay.textContent = deaths;
+
+  // Custom level setup
+  if (forCustomLevel && levelData) {
+    customLevelMode = true;
+    customLevelData = levelData;
+
+    // Convert all blocks to game obstacles
+    customObstaclesPlaced = [];
+    if (levelData.blocks) {
+      customObstaclesPlaced = levelData.blocks
+        .map(b => createObstacleFromBlock(b))
+        .filter(o => o !== null);
+    }
+    customLevelTotalObstacles = customObstaclesPlaced.length;
+    customObstaclesIndex = 0;
+
+    // Set game speed based on level (use moderate speed for custom levels)
+    gameSpeed = 5;
+    levelDisplay.textContent = 'CUSTOM';
+    levelModeDisplay.textContent = '[ CUSTOM: ' + (levelData.name || 'Untitled') + ' ]';
+    levelModeDisplay.style.color = '#f0f';
+    progressBar.style.display = 'block';
+    customLevelNameDisplay.style.display = 'none';
+
+    // Sort obstacles by x position and assign spawn distances
+    customObstaclesPlaced.sort((a, b) => a.x - b.x);
+
+    // Calculate relative spawn positions (distance from player start)
+    if (customObstaclesPlaced.length > 0) {
+      const firstX = customObstaclesPlaced[0].x;
+      customObstaclesPlaced.forEach(obs => {
+        obs.spawnDistance = obs.x - firstX + 500; // Minimum distance before spawning
+        obs.originalX = obs.x;
+      });
+    }
+
+    playLevelCompleteSound();
+  } else {
+    customLevelMode = false;
+    customLevelData = null;
+    gameSpeed = 4;
+    levelDisplay.textContent = '1';
+    levelModeDisplay.textContent = '';
+    levelModeDisplay.style.color = '';
+    progressBar.style.display = 'none';
+    customLevelNameDisplay.style.display = 'none';
+  }
+
+  initBackground();
+}
+
+function spawnProceduralObstacle() {
+  const types = ['spike', 'block', 'double_spike', 'platform', 'laser'];
+  const weights = [3, 3, 2, 2, 1];
+  const totalWeight = weights.reduce((a, b) => a + b, 0);
+  let rand = Math.random() * totalWeight;
+  let type = types[0];
+
+  for (let i = 0; i < weights.length; i++) {
+    rand -= weights[i];
+    if (rand <= 0) {
+      type = types[i];
+      break;
+    }
+  }
+
+  const colors = {
+    spike: '#f04',
+    block: '#f0f',
+    double_spike: '#f04',
+    platform: '#0f0',
+    laser: '#f80'
+  };
+
+  const obstacle = {
+    x: 850,
+    y: GROUND_Y,
+    width: 30,
+    height: 30,
+    type: type,
+    color: colors[type],
+    passed: false,
+    animOffset: Math.random() * Math.PI * 2,
+    customLevel: false
+  };
+
+  switch (type) {
+    case 'spike':
+      obstacle.y = GROUND_Y - obstacle.height;
+      obstacle.width = 28;
+      obstacle.height = 28;
+      break;
+    case 'block':
+      obstacle.width = 30;
+      obstacle.height = 40;
+      obstacle.y = GROUND_Y - obstacle.height;
+      break;
+    case 'double_spike':
+      obstacle.width = 60;
+      obstacle.y = GROUND_Y - 28;
+      break;
+    case 'platform':
+      obstacle.width = 80;
+      obstacle.height = 15;
+      obstacle.y = GROUND_Y - 80;
+      break;
+    case 'laser':
+      obstacle.width = 10;
+      obstacle.height = 60;
+      obstacle.y = GROUND_Y - obstacle.height;
+      obstacle.timer = 0;
+      obstacle.active = true;
+      break;
+  }
+
+  obstacles.push(obstacle);
+}
+
+function spawnParticles(x, y, color, count, spread) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x: x,
+      y: y,
+      vx: (Math.random() - 0.5) * spread,
+      vy: (Math.random() - 0.8) * spread,
+      life: 1,
+      decay: Math.random() * 0.03 + 0.015,
+      size: Math.random() * 4 + 1,
+      color: color,
+      gravity: 0.15
+    });
+  }
+}
+
+function jump() {
+  if (!player.alive || gameState !== 'playing') return;
+
+  if (player.jumps < player.maxJumps) {
+    player.vy = JUMP_FORCE;
+    player.grounded = false;
+    player.jumps++;
+    player.rotation = 0;
+    playJumpSound();
+
+    const particleColor = player.jumps > 1 ? '#f0f' : '#0ff';
+    spawnParticles(player.x + player.width / 2, player.y + player.height, particleColor, 8, 4);
+
+    if (player.jumps === 2) {
+      spawnParticles(player.x + player.width / 2, player.y + player.height, '#f0f', 15, 6);
+    }
+  }
+}
+
+function die() {
+  if (!player.alive) return;
+  player.alive = false;
+  gameState = 'dead';
+  deaths++;
+  screenShake = 20;
+  playDeathSound();
+
+  spawnParticles(player.x + player.width / 2, player.y + player.height / 2, player.color, 40, 10);
+  spawnParticles(player.x + player.width / 2, player.y + player.height / 2, '#fff', 20, 8);
+
+  if (score > highScore) {
+    highScore = score;
+    localStorage.setItem('cyberDashHighScore', highScore);
+  }
+
+  setTimeout(() => {
+    showMenu('crash');
+  }, 800);
+}
+
+function completeCustomLevel() {
+  if (!player.alive) return;
+  gameState = 'levelComplete';
+  playLevelCompleteSound();
+
+  // Celebration particles
+  for (let i = 0; i < 5; i++) {
+    setTimeout(() => {
+      spawnParticles(
+        Math.random() * 800,
+        GROUND_Y - Math.random() * 200,
+        ['#0ff', '#f0f', '#0f0', '#ff0'][Math.floor(Math.random() * 4)],
+        15, 6
+      );
+    }, i * 100);
+  }
+
+  setTimeout(() => {
+    showMenu('complete');
+  }, 2000);
+}
+
+function showMenu(type) {
+  // Hide all dynamic elements first
+  gameOverText.style.display = 'none';
+  levelCompleteText.style.display = 'none';
+  levelCompleteSub.style.display = 'none';
+  finalScore.style.display = 'none';
+  customLevelNameDisplay.style.display = 'none';
+  retryBtn.style.display = 'none';
+  retryBtn.className = '';
+
+  if (type === 'crash') {
+    gameOverText.style.display = 'block';
+    finalScore.style.display = 'block';
+    finalScore.textContent = 'SCORE: ' + score;
+    startBtn.textContent = 'REJACK';
+
+    // Show retry for custom levels on death
+    if (customLevelMode && customLevelData) {
+      retryBtn.style.display = 'block';
+      retryBtn.textContent = '↻ RETRY CUSTOM LEVEL';
+      retryBtn.className = 'on-death';
+      customLevelNameDisplay.textContent = 'WAS PLAYING: ' + customLevelData.name;
+      customLevelNameDisplay.style.display = 'block';
+    }
+  } else if (type === 'complete') {
+    levelCompleteText.style.display = 'block';
+    levelCompleteSub.style.display = 'block';
+    levelCompleteSub.textContent = 'TRANSITIONING TO LEVEL 8...';
+    finalScore.style.display = 'block';
+    finalScore.textContent = 'SCORE: ' + score;
+    startBtn.textContent = 'CONTINUE → LVL 8';
+
+    // Show retry for custom levels on completion
+    if (customLevelMode && customLevelData) {
+      retryBtn.style.display = 'block';
+      retryBtn.textContent = '↻ RETRY CUSTOM LEVEL';
+      retryBtn.className = '';
+      customLevelNameDisplay.textContent = 'COMPLETED: ' + customLevelData.name;
+      customLevelNameDisplay.style.display = 'block';
+    }
+  }
+
+  highScoreDisplay.textContent = 'HIGH SCORE: ' + highScore;
+
+  overlay.classList.remove('hidden');
+}
+
+function checkCollision(a, b) {
+  const padding = 5;
+  return (
+    a.x + padding < b.x + b.width - padding &&
+    a.x + a.width - padding > b.x + padding &&
+    a.y + padding < b.y + b.height - padding &&
+    a.y + a.height - padding > b.y + padding
+  );
+}
+
+function update() {
+  if (gameState !== 'playing') return;
+
+  frameCount++;
+
+  // Increase difficulty for procedural mode only
+  if (!customLevelMode && !transitioningToProcedural) {
+    if (frameCount % 600 === 0) {
+      gameSpeed = Math.min(gameSpeed + 0.3, 10);
+      levelDisplay.textContent = Math.floor((gameSpeed - 4) / 0.3) + 1;
+    }
+  }
+
+  // Custom level obstacle spawning
+  if (customLevelMode && !transitioningToProcedural) {
+    // Check if we should spawn the next custom obstacle
+    while (customObstaclesIndex < customObstaclesPlaced.length) {
+      const nextObs = customObstaclesPlaced[customObstaclesIndex];
+      // Calculate how far player has "traveled" - use distance traveled based on gameSpeed
+      const distanceTraveled = frameCount * gameSpeed;
+
+      if (distanceTraveled >= nextObs.spawnDistance) {
+        // Spawn this obstacle at the right edge of screen
+        nextObs.x = 850;
+        nextObs.passed = false;
+        obstacles.push(nextObs);
+        customObstaclesIndex++;
+      } else {
+        break;
+      }
+    }
+
+    // Update progress bar
+    if (customLevelTotalObstacles > 0) {
+      const progress = Math.min(100, (customObstaclesIndex / customLevelTotalObstacles) * 100);
+      progressBar.style.width = progress + '%';
+    }
+
+    // Check if all custom obstacles have been spawned and cleared
+    if (customObstaclesIndex >= customLevelTotalObstacles && obstacles.length === 0) {
+      // Custom level complete! Transition to level 8
+      transitioningToProcedural = true;
+
+      // Give a brief moment of clear track before level 8 starts
+      setTimeout(() => {
+        progressBar.style.display = 'none';
+        levelModeDisplay.textContent = '[ LEVEL 8 - POST CUSTOM ]';
+        levelModeDisplay.style.color = '#0ff';
+        levelDisplay.textContent = '8';
+
+        // Set speed to level 8 equivalent (gameSpeed = 4 + 7*0.3 = 6.1)
+        gameSpeed = 6.1;
+      }, 1500);
+    }
+  }
+
+  // Procedural obstacle spawning (after custom level, or in normal mode)
+  if (!customLevelMode || transitioningToProcedural) {
+    const minGap = Math.max(60, 120 - gameSpeed * 5);
+    if (frameCount % Math.floor(minGap + Math.random() * 40) === 0) {
+      spawnProceduralObstacle();
+    }
+  }
+
+  // Beat timer for music
+  beatTimer++;
+  if (beatTimer % 30 === 0) {
+    playBeat();
+  }
+
+  // Player physics
+  player.vy += GRAVITY;
+  player.y += player.vy;
+
+  // Ground collision
+  if (player.y + player.height >= GROUND_Y) {
+    player.y = GROUND_Y - player.height;
+    player.vy = 0;
+    player.grounded = true;
+    player.jumps = 0;
+  }
+
+  // Platform landing (only when falling downward)
+  if (player.vy > 0) {
+    obstacles.forEach(obs => {
+      if (obs.type === 'platform') {
+        const playerBottom = player.y + player.height;
+        const prevBottom = playerBottom - player.vy;
+
+        // Player was above platform and now overlaps it (landed on top)
+        if (prevBottom <= obs.y + 4 &&
+            playerBottom >= obs.y &&
+            player.x + player.width > obs.x &&
+            player.x < obs.x + obs.width) {
+          player.y = obs.y - player.height;
+          player.vy = 0;
+          player.grounded = true;
+          player.jumps = 0;
+        }
+      }
+    });
+  }
+
+  // Rotation while jumping
+  if (!player.grounded) {
+    player.rotation += 0.12;
+  } else {
+    player.rotation = Math.round(player.rotation / (Math.PI / 2)) * (Math.PI / 2);
+  }
+
+  // Player trail
+  player.trail.unshift({ x: player.x, y: player.y, rotation: player.rotation, alpha: 0.7 });
+  if (player.trail.length > 12) player.trail.pop();
+  player.trail.forEach(t => t.alpha *= 0.9);
+
+  // Update obstacles
+  obstacles.forEach(obs => {
+    obs.x -= gameSpeed;
+
+    // Laser toggle
+    if (obs.type === 'laser') {
+      obs.timer++;
+      obs.active = (obs.timer % 90) < 45;
+    }
+
+    // Score when passing
+    if (!obs.passed && obs.x + obs.width < player.x) {
+      obs.passed = true;
+      score += 10;
+      scoreDisplay.textContent = score;
+      playScoreSound();
+    }
+
+    // Collision - skip platforms (safe surfaces)
+    if (obs.type !== 'platform') {
+      const playerBox = {
+        x: player.x,
+        y: player.y,
+        width: player.width,
+        height: player.height
+      };
+
+      if (obs.type !== 'laser' || obs.active) {
+        if (checkCollision(playerBox, obs)) {
+          die();
+        }
+      }
+    }
+  });
+
+  // Remove off-screen obstacles
+  obstacles = obstacles.filter(obs => obs.x + obs.width > -50);
+
+  // Update particles
+  particles.forEach(p => {
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vy += p.gravity;
+    p.life -= p.decay;
+  });
+  particles = particles.filter(p => p.life > 0);
+
+  // Update background
+  bgStars.forEach(star => {
+    star.x -= star.speed * (gameSpeed / 4);
+    if (star.x < 0) {
+      star.x = 800;
+      star.y = Math.random() * (GROUND_Y - 50);
+    }
+    star.brightness = 0.5 + Math.sin(frameCount * 0.05 + star.x) * 0.5;
+  });
+
+  buildings.forEach(b => {
+    b.x -= gameSpeed * 0.2;
+    if (b.x + b.width < 0) {
+      b.x = 800 + Math.random() * 100;
+      b.height = 40 + Math.random() * 120;
+    }
+  });
+
+  // Screen shake
+  if (screenShake > 0) {
+    screenShakeX = (Math.random() - 0.5) * screenShake;
+    screenShakeY = (Math.random() - 0.5) * screenShake;
+    screenShake *= 0.9;
+    if (screenShake < 0.5) screenShake = 0;
+  } else {
+    screenShakeX = 0;
+    screenShakeY = 0;
+  }
+}
+
+function drawNeonRect(x, y, w, h, color, glowSize) {
+  ctx.shadowColor = color;
+  ctx.shadowBlur = glowSize || 15;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+  ctx.strokeRect(x, y, w, h);
+
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.1;
+  ctx.fillRect(x, y, w, h);
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+}
+
+function drawNeonSpike(x, y, w, h, color) {
+  ctx.shadowColor = color;
+  ctx.shadowBlur = 15;
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 2;
+
+  ctx.beginPath();
+  ctx.moveTo(x, y + h);
+  ctx.lineTo(x + w / 2, y);
+  ctx.lineTo(x + w, y + h);
+  ctx.closePath();
+  ctx.stroke();
+
+  ctx.fillStyle = color;
+  ctx.globalAlpha = 0.2;
+  ctx.fill();
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+}
+
+function draw() {
+  ctx.save();
+  ctx.translate(screenShakeX, screenShakeY);
+
+  // Clear
+  ctx.fillStyle = '#0a0a1a';
+  ctx.fillRect(-10, -10, 820, 520);
+
+  // Background gradient
+  const gradient = ctx.createLinearGradient(0, 0, 0, GROUND_Y);
+  gradient.addColorStop(0, 'rgba(10, 0, 30, 1)');
+  gradient.addColorStop(1, 'rgba(5, 5, 20, 1)');
+  ctx.fillStyle = gradient;
+  ctx.fillRect(0, 0, 800, GROUND_Y);
+
+  // Stars
+  bgStars.forEach(star => {
+    ctx.shadowColor = star.color;
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = star.color;
+    ctx.globalAlpha = star.brightness * 0.6;
+    ctx.fillRect(star.x, star.y, star.size, star.size);
+  });
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+
+  // Buildings silhouette
+  buildings.forEach(b => {
+    const buildingY = GROUND_Y - b.height;
+    ctx.shadowColor = b.color;
+    ctx.shadowBlur = 10;
+    ctx.fillStyle = 'rgba(10, 10, 30, 0.8)';
+    ctx.fillRect(b.x, buildingY, b.width, b.height);
+    ctx.strokeStyle = b.color;
+    ctx.lineWidth = 1;
+    ctx.globalAlpha = b.brightness;
+    ctx.strokeRect(b.x, buildingY, b.width, b.height);
+
+    ctx.globalAlpha = b.brightness * 0.5;
+    for (let wy = buildingY + 8; wy < GROUND_Y - 10; wy += 14) {
+      for (let wx = b.x + 5; wx < b.x + b.width - 8; wx += 10) {
+        if (Math.random() > 0.3) {
+          ctx.fillStyle = b.color;
+          ctx.fillRect(wx, wy, 4, 6);
+        }
+      }
+    }
+  });
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+
+  // Grid lines on ground
+  ctx.shadowColor = '#08f';
+  ctx.shadowBlur = 5;
+  ctx.strokeStyle = 'rgba(0, 100, 255, 0.15)';
+  ctx.lineWidth = 1;
+  const gridOffset = (frameCount * gameSpeed) % 40;
+  for (let gx = -gridOffset; gx < 800; gx += 40) {
+    ctx.beginPath();
+    ctx.moveTo(gx, GROUND_Y);
+    ctx.lineTo(gx - 50, 500);
+    ctx.stroke();
+  }
+  for (let gy = GROUND_Y; gy < 500; gy += 20) {
+    ctx.beginPath();
+    ctx.moveTo(0, gy);
+    ctx.lineTo(800, gy);
+    ctx.stroke();
+  }
+  ctx.shadowBlur = 0;
+
+  // Ground line
+  ctx.shadowColor = '#0ff';
+  ctx.shadowBlur = 20;
+  ctx.strokeStyle = '#0ff';
+  ctx.lineWidth = 3;
+  ctx.beginPath();
+  ctx.moveTo(0, GROUND_Y);
+  ctx.lineTo(800, GROUND_Y);
+  ctx.stroke();
+
+  // Ground fill
+  const groundGrad = ctx.createLinearGradient(0, GROUND_Y, 0, 500);
+  groundGrad.addColorStop(0, 'rgba(0, 255, 255, 0.05)');
+  groundGrad.addColorStop(1, 'rgba(0, 0, 50, 0.1)');
+  ctx.fillStyle = groundGrad;
+  ctx.fillRect(0, GROUND_Y, 800, 500 - GROUND_Y);
+
+  // Neon pulse lines on ground
+  if (frameCount % 120 < 30) {
+    const pulseAlpha = 1 - (frameCount % 120) / 30;
+    ctx.shadowColor = '#f0f';
+    ctx.shadowBlur = 25;
+    ctx.strokeStyle = `rgba(255, 0, 255, ${pulseAlpha * 0.5})`;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(0, GROUND_Y + 5);
+    ctx.lineTo(800, GROUND_Y + 5);
+    ctx.stroke();
+    ctx.shadowBlur = 0;
+  }
+
+  // Obstacles
+  obstacles.forEach(obs => {
+    switch (obs.type) {
+      case 'spike':
+        drawNeonSpike(obs.x, obs.y, obs.width, obs.height, obs.color);
+        break;
+      case 'block':
+        drawNeonRect(obs.x, obs.y, obs.width, obs.height, obs.color, 15);
+        ctx.strokeStyle = obs.color;
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = 0.3;
+        ctx.strokeRect(obs.x + 5, obs.y + 5, obs.width - 10, obs.height - 10);
+        ctx.globalAlpha = 1;
+        break;
+      case 'double_spike':
+        drawNeonSpike(obs.x, obs.y, 28, obs.height, obs.color);
+        drawNeonSpike(obs.x + 30, obs.y, 28, obs.height, obs.color);
+        break;
+      case 'platform':
+        drawNeonRect(obs.x, obs.y, obs.width, obs.height, obs.color, 10);
+        ctx.strokeStyle = obs.color;
+        ctx.lineWidth = 1;
+        ctx.globalAlpha = 0.3;
+        for (let px = obs.x + 10; px < obs.x + obs.width; px += 15) {
+          ctx.beginPath();
+          ctx.moveTo(px, obs.y + obs.height);
+          ctx.lineTo(px, GROUND_Y);
+          ctx.stroke();
+        }
+        ctx.globalAlpha = 1;
+        break;
+      case 'laser':
+        if (obs.active) {
+          ctx.shadowColor = '#f80';
+          ctx.shadowBlur = 25;
+          ctx.strokeStyle = '#f80';
+          ctx.lineWidth = 4;
+          ctx.beginPath();
+          ctx.moveTo(obs.x + obs.width / 2, obs.y);
+          ctx.lineTo(obs.x + obs.width / 2, obs.y + obs.height);
+          ctx.stroke();
+
+          ctx.strokeStyle = '#ff0';
+          ctx.lineWidth = 2;
+          ctx.beginPath();
+          ctx.moveTo(obs.x + obs.width / 2, obs.y);
+          ctx.lineTo(obs.x + obs.width / 2, obs.y + obs.height);
+          ctx.stroke();
+
+          ctx.fillStyle = '#f80';
+          ctx.fillRect(obs.x - 5, obs.y - 5, obs.width + 10, 5);
+          ctx.fillRect(obs.x - 5, obs.y + obs.height, obs.width + 10, 5);
+        } else {
+          ctx.fillStyle = 'rgba(255, 136, 0, 0.3)';
+          ctx.fillRect(obs.x - 5, obs.y - 5, obs.width + 10, 5);
+          ctx.fillRect(obs.x - 5, obs.y + obs.height, obs.width + 10, 5);
+        }
+        ctx.shadowBlur = 0;
+        break;
+    }
+  });
+
+  // Player trail
+  player.trail.forEach((t) => {
+    ctx.save();
+    ctx.globalAlpha = t.alpha * 0.3;
+    ctx.translate(t.x + player.width / 2, t.y + player.height / 2);
+    ctx.rotate(t.rotation);
+    ctx.shadowColor = player.glowColor;
+    ctx.shadowBlur = 10;
+    ctx.strokeStyle = player.color;
+    ctx.lineWidth = 1.5;
+    ctx.strokeRect(-player.width / 2, -player.height / 2, player.width, player.height);
+    ctx.restore();
+  });
+
+  // Player
+  if (player.alive || frameCount % 4 < 3) {
+    ctx.save();
+    ctx.translate(player.x + player.width / 2, player.y + player.height / 2);
+    ctx.rotate(player.rotation);
+
+    ctx.shadowColor = player.glowColor;
+    ctx.shadowBlur = 25;
+
+    ctx.strokeStyle = player.color;
+    ctx.lineWidth = 2;
+    ctx.strokeRect(-player.width / 2, -player.height / 2, player.width, player.height);
+
+    ctx.fillStyle = player.color;
+    ctx.globalAlpha = 0.15;
+    ctx.fillRect(-player.width / 2, -player.height / 2, player.width, player.height);
+    ctx.globalAlpha = 1;
+
+    // Inner diamond
+    ctx.shadowBlur = 10;
+    ctx.strokeStyle = '#fff';
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    const ds = 8;
+    ctx.moveTo(0, -ds);
+    ctx.lineTo(ds, 0);
+    ctx.lineTo(0, ds);
+    ctx.lineTo(-ds, 0);
+    ctx.closePath();
+    ctx.stroke();
+
+    ctx.restore();
+    ctx.shadowBlur = 0;
+  }
+
+  // Particles
+  particles.forEach(p => {
+    ctx.shadowColor = p.color;
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = p.color;
+    ctx.globalAlpha = p.life;
+    ctx.fillRect(p.x - p.size / 2, p.y - p.size / 2, p.size, p.size);
+  });
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+
+  // Speed lines when fast
+  if (gameSpeed > 5) {
+    const lineAlpha = (gameSpeed - 5) / 10;
+    ctx.strokeStyle = `rgba(0, 255, 255, ${lineAlpha * 0.2})`;
+    ctx.lineWidth = 1;
+    for (let i = 0; i < 5; i++) {
+      const ly = Math.random() * GROUND_Y;
+      const lx = Math.random() * 800;
+      ctx.beginPath();
+      ctx.moveTo(lx, ly);
+      ctx.lineTo(lx - 30 - gameSpeed * 3, ly);
+      ctx.stroke();
+    }
+  }
+
+  // Level complete celebration overlay
+  if (gameState === 'levelComplete') {
+    ctx.globalAlpha = 0.1;
+    ctx.fillStyle = '#0f0';
+    ctx.fillRect(0, 0, 800, 500);
+    ctx.globalAlpha = 1;
+  }
+
+  ctx.restore();
+}
+
+function gameLoop() {
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+// ====== UI HANDLERS ======
+
+// Start / Rejack button
+let startMode = 'procedural'; // procedural, custom, continue_lvl8
+startBtn.addEventListener('click', () => {
+  initAudio();
+  overlay.classList.add('hidden');
+
+  if (startMode === 'custom') {
+    resetGame(true, customLevelData);
+  } else {
+    // Level 8 or normal start
+    const lvl8Start = startMode === 'continue_lvl8';
+    resetGame(false, null);
+    if (lvl8Start) {
+      gameSpeed = 6.1;
+      levelDisplay.textContent = '8';
+    }
+  }
+
+  gameState = 'playing';
+  startMode = 'procedural';
+});
+
+// Retry button - restarts the current custom level immediately
+retryBtn.addEventListener('click', () => {
+  initAudio();
+  if (customLevelData) {
+    overlay.classList.add('hidden');
+    resetGame(true, customLevelData);
+    gameState = 'playing';
+    startMode = 'custom';
+  }
+});
+
+// Custom levels button
+customLevelBtn.addEventListener('click', () => {
+  const levels = getSavedLevels();
+  levelList.innerHTML = '';
+
+  if (levels.length === 0) {
+    levelList.innerHTML = '<div class="no-levels">NO CUSTOM LEVELS CREATED</div>';
+    levelList.innerHTML += '<div style="color:#555;font-size:11px;margin-bottom:10px;">Open the Level Editor to create one!</div>';
+  } else {
+    levels.forEach((level, idx) => {
+      const card = document.createElement('div');
+      card.className = 'level-card';
+      const blockCount = level.blocks ? level.blocks.length : 0;
+      card.innerHTML = `
+        <span class="name">${level.name || 'Untitled Level'}</span>
+        <span class="info">${blockCount} blocks</span>
+      `;
+      card.addEventListener('click', () => {
+        customLevelData = level;
+        startMode = 'custom';
+        levelSelector.classList.remove('show');
+
+        // Show overlay with level name
+        customLevelNameDisplay.textContent = 'PLAYING: ' + (level.name || 'Untitled Level');
+        customLevelNameDisplay.style.display = 'block';
+        startBtn.textContent = '▶ START LEVEL';
+        gameOverText.style.display = 'none';
+        levelCompleteText.style.display = 'none';
+        levelCompleteSub.style.display = 'none';
+        finalScore.style.display = 'none';
+        overlay.classList.remove('hidden');
+      });
+      levelList.appendChild(card);
+    });
+  }
+
+  levelSelector.classList.add('show');
+});
+
+// Level editor button
+editorBtn.addEventListener('click', () => {
+  window.open('cyber_dash_editor.html', '_blank');
+});
+
+// Back button in level selector
+backBtn.addEventListener('click', () => {
+  levelSelector.classList.remove('show');
+});
+
+// Check for custom level passed from editor on load
+function checkForCustomLevel() {
+  try {
+    const saved = localStorage.getItem('cyberDashCurrentLevel');
+    if (saved) {
+      const data = JSON.parse(saved);
+      if (data && data.blocks) {
+        // Auto-load the custom level
+        customLevelData = data;
+        startMode = 'custom';
+        customLevelNameDisplay.textContent = 'PLAYING: ' + (data.name || 'Untitled Level');
+        customLevelNameDisplay.style.display = 'block';
+        startBtn.textContent = '▶ START LEVEL';
+        localStorage.removeItem('cyberDashCurrentLevel');
+      }
+    }
+  } catch {}
+}
+
+// Input handling
+document.addEventListener('keydown', (e) => {
+  if (e.code === 'Space' || e.code === 'ArrowUp') {
+    e.preventDefault();
+    if (gameState === 'playing') {
+      jump();
+    }
+  }
+});
+
+canvas.addEventListener('click', () => {
+  if (gameState === 'playing') {
+    jump();
+  }
+});
+
+canvas.addEventListener('touchstart', (e) => {
+  e.preventDefault();
+  if (gameState === 'playing') {
+    jump();
+  }
+});
+
+// Initialize
+highScoreDisplay.textContent = 'HIGH SCORE: ' + highScore;
+deathsDisplay.textContent = '0';
+initBackground();
+checkForCustomLevel();
+
+// Draw initial state
+draw();
+
+// Start game loop
+gameLoop();
+</script>
+</body>
+</html>

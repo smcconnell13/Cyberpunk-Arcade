@@ -1,0 +1,1088 @@
+<!DOCTYPE html>
+<!-- saved from url=(0069)file:///C:/Users/BrainZero/Desktop/ProjectBrainZero/cline/arcade.html -->
+<html lang="en"><head><meta http-equiv="Content-Type" content="text/html; charset=UTF-8">
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CYBER ARCADER</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a12;
+    min-height: 100vh;
+    font-family: 'Share Tech Mono', monospace;
+    color: #e0e0ff;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  /* Animated background grid */
+  body::before {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: 
+      linear-gradient(rgba(0,255,255,0.03) 1px, transparent 1px),
+      linear-gradient(90deg, rgba(0,255,255,0.03) 1px, transparent 1px);
+    background-size: 50px 50px;
+    animation: gridScroll 20s linear infinite;
+    z-index: 0;
+    pointer-events: none;
+  }
+
+  @keyframes gridScroll {
+    0% { transform: perspective(500px) rotateX(60deg) translateY(0); }
+    100% { transform: perspective(500px) rotateX(60deg) translateY(50px); }
+  }
+
+  /* Scanline overlay */
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.1) 2px,
+      rgba(0,0,0,0.1) 4px
+    );
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  /* Floating particles */
+  .particles-container {
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: hidden;
+  }
+
+  .particle {
+    position: absolute;
+    width: 2px;
+    height: 2px;
+    background: #0ff;
+    border-radius: 50%;
+    box-shadow: 0 0 6px #0ff, 0 0 12px #0ff;
+    animation: floatParticle linear infinite;
+    opacity: 0.6;
+  }
+
+  @keyframes floatParticle {
+    0% { transform: translateY(100vh) translateX(0); opacity: 0; }
+    10% { opacity: 0.6; }
+    90% { opacity: 0.6; }
+    100% { transform: translateY(-10vh) translateX(100px); opacity: 0; }
+  }
+
+  .arcade-header {
+    position: relative;
+    z-index: 10;
+    text-align: center;
+    padding: 40px 20px 20px;
+  }
+
+  .arcade-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(36px, 8vw, 80px);
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    position: relative;
+    display: inline-block;
+    background: linear-gradient(180deg, #0ff 0%, #f0f 50%, #ff0 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: drop-shadow(0 0 20px rgba(0,255,255,0.5)) drop-shadow(0 0 40px rgba(255,0,255,0.3));
+    animation: titleGlow 3s ease-in-out infinite alternate;
+  }
+
+  @keyframes titleGlow {
+    0% { filter: drop-shadow(0 0 20px rgba(0,255,255,0.5)) drop-shadow(0 0 40px rgba(255,0,255,0.3)); }
+    100% { filter: drop-shadow(0 0 30px rgba(255,0,255,0.6)) drop-shadow(0 0 60px rgba(0,255,255,0.4)); }
+  }
+
+  .arcade-subtitle {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(10px, 2vw, 18px);
+    color: rgba(0,255,255,0.6);
+    letter-spacing: 0.5em;
+    margin-top: 10px;
+    text-transform: uppercase;
+  }
+
+  .neon-divider {
+    width: 80%;
+    max-width: 600px;
+    height: 2px;
+    margin: 30px auto;
+    background: linear-gradient(90deg, transparent, #0ff, #f0f, #0ff, transparent);
+    position: relative;
+    z-index: 10;
+    box-shadow: 0 0 10px #0ff, 0 0 20px rgba(255,0,255,0.5);
+  }
+
+  .stats-bar {
+    position: relative;
+    z-index: 10;
+    text-align: center;
+    padding: 10px 20px;
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    flex-wrap: wrap;
+  }
+
+  .stat-item {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    color: rgba(0,255,255,0.5);
+    letter-spacing: 0.2em;
+  }
+
+  .stat-item span {
+    color: #0ff;
+    font-weight: 700;
+    text-shadow: 0 0 10px #0ff;
+  }
+
+  /* Arcade floor */
+  .arcade-floor {
+    position: relative;
+    z-index: 10;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 30px;
+    padding: 40px clamp(20px, 5vw, 60px);
+    max-width: 1600px;
+    margin: 0 auto;
+  }
+
+  /* Arcade Cabinet */
+  .cabinet {
+    position: relative;
+    perspective: 800px;
+    cursor: pointer;
+    transition: transform 0.3s ease;
+  }
+
+  .cabinet:hover {
+    transform: translateY(-8px);
+  }
+
+  .cabinet-body {
+    position: relative;
+    background: linear-gradient(180deg, #1a1a2e 0%, #0d0d1a 100%);
+    border-radius: 16px 16px 8px 8px;
+    overflow: hidden;
+    border: 1px solid rgba(0,255,255,0.15);
+    transition: all 0.3s ease;
+    box-shadow: 
+      0 4px 20px rgba(0,0,0,0.5),
+      inset 0 1px 0 rgba(255,255,255,0.05);
+  }
+
+  .cabinet:hover .cabinet-body {
+    border-color: var(--cab-accent, #0ff);
+    box-shadow: 
+      0 8px 40px rgba(0,0,0,0.6),
+      0 0 30px color-mix(in srgb, var(--cab-accent, #0ff) 30%, transparent),
+      inset 0 0 30px color-mix(in srgb, var(--cab-accent, #0ff) 5%, transparent);
+  }
+
+  /* Cabinet top trim */
+  .cabinet-trim {
+    height: 4px;
+    background: linear-gradient(90deg, 
+      transparent 0%, 
+      var(--cab-accent, #0ff) 20%, 
+      var(--cab-accent, #0ff) 80%, 
+      transparent 100%
+    );
+    box-shadow: 0 0 15px var(--cab-accent, #0ff);
+    opacity: 0.6;
+    transition: opacity 0.3s ease;
+  }
+
+  .cabinet:hover .cabinet-trim {
+    opacity: 1;
+  }
+
+  /* Cabinet screen */
+  .cabinet-screen {
+    position: relative;
+    aspect-ratio: 4/3;
+    margin: 16px 12px 8px;
+    background: #050510;
+    border-radius: 8px;
+    overflow: hidden;
+    border: 2px solid rgba(255,255,255,0.05);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .cabinet-screen::before {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 3px,
+      rgba(0,0,0,0.15) 3px,
+      rgba(0,0,0,0.15) 6px
+    );
+    pointer-events: none;
+    z-index: 2;
+  }
+
+  .cabinet-screen::after {
+    content: '';
+    position: absolute;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.4) 100%);
+    pointer-events: none;
+    z-index: 3;
+  }
+
+  /* Screen content */
+  .screen-content {
+    position: relative;
+    z-index: 1;
+    text-align: center;
+    padding: 20px;
+  }
+
+  .screen-icon {
+    font-size: 48px;
+    margin-bottom: 8px;
+    filter: drop-shadow(0 0 10px var(--cab-accent, #0ff));
+    animation: iconPulse 2s ease-in-out infinite alternate;
+  }
+
+  @keyframes iconPulse {
+    0% { transform: scale(1); opacity: 0.8; }
+    100% { transform: scale(1.05); opacity: 1; }
+  }
+
+  .screen-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(14px, 2vw, 20px);
+    font-weight: 700;
+    color: var(--cab-accent, #0ff);
+    text-shadow: 0 0 10px var(--cab-accent, #0ff), 0 0 20px rgba(0,0,0,0.8);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+
+  /* Screen flicker effect on hover */
+  .cabinet:hover .screen-content {
+    animation: screenFlicker 0.15s ease-in-out 3;
+  }
+
+  @keyframes screenFlicker {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.85; }
+  }
+
+  /* Cabinet marquee */
+  .cabinet-marquee {
+    margin: 4px 16px;
+    padding: 8px 12px;
+    background: linear-gradient(180deg, #12121f, #0a0a15);
+    border-radius: 4px;
+    border-left: 3px solid var(--cab-accent, #0ff);
+    border-right: 3px solid var(--cab-accent, #0ff);
+  }
+
+  .marquee-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(12px, 1.5vw, 16px);
+    font-weight: 700;
+    color: #fff;
+    text-shadow: 0 0 8px var(--cab-accent, #0ff);
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .marquee-desc {
+    font-size: 11px;
+    color: rgba(200,200,255,0.4);
+    margin-top: 4px;
+    line-height: 1.3;
+    letter-spacing: 0.05em;
+  }
+
+  /* Cabinet controls panel */
+  .cabinet-controls {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 8px 16px 12px;
+    padding: 8px 12px;
+    background: rgba(0,0,0,0.3);
+    border-radius: 6px;
+  }
+
+  .control-joystick {
+    width: 12px;
+    height: 12px;
+    background: #333;
+    border-radius: 50%;
+    position: relative;
+    box-shadow: inset 0 0 4px rgba(0,0,0,0.5);
+  }
+
+  .control-joystick::before {
+    content: '';
+    position: absolute;
+    top: -6px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 4px;
+    height: 8px;
+    background: #555;
+    border-radius: 2px 2px 0 0;
+  }
+
+  .control-buttons {
+    display: flex;
+    gap: 4px;
+  }
+
+  .control-btn {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--cab-accent, #0ff);
+    opacity: 0.3;
+    box-shadow: inset 0 1px 2px rgba(0,0,0,0.3);
+  }
+
+  .cabinet:hover .control-btn {
+    opacity: 0.7;
+  }
+
+  /* Insert coin / Play button */
+  .cabinet-play {
+    display: block;
+    width: calc(100% - 24px);
+    margin: 0 12px 12px;
+    padding: 10px;
+    background: linear-gradient(180deg, 
+      color-mix(in srgb, var(--cab-accent, #0ff) 15%, transparent),
+      color-mix(in srgb, var(--cab-accent, #0ff) 5%, transparent)
+    );
+    border: 1px solid var(--cab-accent, #0ff);
+    border-radius: 6px;
+    color: var(--cab-accent, #0ff);
+    font-family: 'Orbitron', sans-serif;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+    text-align: center;
+    text-decoration: none;
+    transition: all 0.2s ease;
+    cursor: pointer;
+    position: relative;
+    overflow: hidden;
+  }
+
+  .cabinet-play::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255,255,255,0.1), transparent);
+    transition: left 0.5s ease;
+  }
+
+  .cabinet:hover .cabinet-play::before {
+    left: 100%;
+  }
+
+  .cabinet-play:hover {
+    background: linear-gradient(180deg, 
+      color-mix(in srgb, var(--cab-accent, #0ff) 30%, transparent),
+      color-mix(in srgb, var(--cab-accent, #0ff) 15%, transparent)
+    );
+    box-shadow: 0 0 20px color-mix(in srgb, var(--cab-accent, #0ff) 40%, transparent);
+    transform: scale(1.02);
+  }
+
+  /* Cabinet base */
+  .cabinet-base {
+    height: 8px;
+    background: linear-gradient(180deg, #15152a, #0d0d1a);
+    border-radius: 0 0 6px 6px;
+    margin: 0 4px;
+  }
+
+  /* Glitch effect */
+  .glitch-line {
+    position: fixed;
+    left: 0;
+    width: 100%;
+    height: 2px;
+    background: var(--cab-accent, #0ff);
+    opacity: 0;
+    z-index: 999;
+    pointer-events: none;
+  }
+
+  .cabinet:nth-child(1) { --cab-accent: #0ff; --cab-glow: rgba(0,255,255,0.3); }
+  .cabinet:nth-child(2) { --cab-accent: #f0f; --cab-glow: rgba(255,0,255,0.3); }
+  .cabinet:nth-child(3) { --cab-accent: #ff0; --cab-glow: rgba(255,255,0,0.3); }
+  .cabinet:nth-child(4) { --cab-accent: #f80; --cab-glow: rgba(255,128,0,0.3); }
+  .cabinet:nth-child(5) { --cab-accent: #0f0; --cab-glow: rgba(0,255,0,0.3); }
+  .cabinet:nth-child(6) { --cab-accent: #f44; --cab-glow: rgba(255,68,68,0.3); }
+  .cabinet:nth-child(7) { --cab-accent: #48f; --cab-glow: rgba(68,136,255,0.3); }
+  .cabinet:nth-child(8) { --cab-accent: #f0a; --cab-glow: rgba(255,0,170,0.3); }
+
+  /* Staggered animation on load */
+  .cabinet {
+    opacity: 0;
+    transform: translateY(40px);
+    animation: cabinetAppear 0.6s ease forwards;
+  }
+
+  @keyframes cabinetAppear {
+    to { opacity: 1; transform: translateY(0); }
+  }
+
+  .cabinet:nth-child(1) { animation-delay: 0.1s; }
+  .cabinet:nth-child(2) { animation-delay: 0.2s; }
+  .cabinet:nth-child(3) { animation-delay: 0.3s; }
+  .cabinet:nth-child(4) { animation-delay: 0.4s; }
+  .cabinet:nth-child(5) { animation-delay: 0.5s; }
+  .cabinet:nth-child(6) { animation-delay: 0.6s; }
+  .cabinet:nth-child(7) { animation-delay: 0.7s; }
+  .cabinet:nth-child(8) { animation-delay: 0.8s; }
+
+  /* Footer */
+  .arcade-footer {
+    position: relative;
+    z-index: 10;
+    text-align: center;
+    padding: 40px 20px;
+    color: rgba(0,255,255,0.2);
+    font-size: 11px;
+    letter-spacing: 0.3em;
+    text-transform: uppercase;
+  }
+
+  /* No games message */
+  .no-games {
+    position: relative;
+    z-index: 10;
+    text-align: center;
+    padding: 80px 20px;
+    color: rgba(255,255,255,0.3);
+    font-size: 18px;
+  }
+
+  .no-games span {
+    display: block;
+    font-size: 48px;
+    margin-bottom: 16px;
+  }
+
+  /* Out of Order badge */
+  .out-of-order-badge {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%) rotate(-12deg);
+    z-index: 20;
+    padding: 6px 14px;
+    background: repeating-linear-gradient(
+      -45deg,
+      #ff0000 0px,
+      #ff0000 6px,
+      #111111 6px,
+      #111111 12px
+    );
+    border: 2px solid #ff0;
+    border-radius: 4px;
+    box-shadow: 0 0 15px rgba(255, 0, 0, 0.5), 0 0 30px rgba(255, 0, 0, 0.3);
+    pointer-events: none;
+  }
+  .out-of-order-badge span {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    font-weight: 900;
+    color: #ff0;
+    letter-spacing: 0.15em;
+    text-transform: uppercase;
+    text-shadow: 0 0 6px #ff0, 0 2px 4px rgba(0,0,0,0.8);
+  }
+
+  /* Responsive */
+  @media (max-width: 640px) {
+    .arcade-floor {
+      grid-template-columns: 1fr;
+      padding: 20px;
+      gap: 20px;
+    }
+    .stats-bar {
+      gap: 20px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<!-- Floating particles -->
+<div class="particles-container" id="particles"><div class="particle" style="left: 15.382%; animation-duration: 11.4798s; animation-delay: 7.03596s; width: 2.93958px; height: 2.93958px; background: rgb(0, 255, 255); box-shadow: rgb(0, 255, 255) 0px 0px 6px, rgb(0, 255, 255) 0px 0px 12px;"></div><div class="particle" style="left: 3.733%; animation-duration: 13.2428s; animation-delay: 8.5639s; width: 2.01581px; height: 2.01581px; background: rgb(255, 255, 0); box-shadow: rgb(255, 255, 0) 0px 0px 6px, rgb(255, 255, 0) 0px 0px 12px;"></div><div class="particle" style="left: 96.5053%; animation-duration: 20.3092s; animation-delay: 1.60929s; width: 2.12952px; height: 2.12952px; background: rgb(0, 255, 255); box-shadow: rgb(0, 255, 255) 0px 0px 6px, rgb(0, 255, 255) 0px 0px 12px;"></div><div class="particle" style="left: 84.9529%; animation-duration: 20.9692s; animation-delay: 3.99587s; width: 2.63297px; height: 2.63297px; background: rgb(0, 255, 0); box-shadow: rgb(0, 255, 0) 0px 0px 6px, rgb(0, 255, 0) 0px 0px 12px;"></div><div class="particle" style="left: 20.1646%; animation-duration: 16.3752s; animation-delay: 5.82251s; width: 1.71624px; height: 1.71624px; background: rgb(255, 0, 255); box-shadow: rgb(255, 0, 255) 0px 0px 6px, rgb(255, 0, 255) 0px 0px 12px;"></div><div class="particle" style="left: 47.8583%; animation-duration: 17.0342s; animation-delay: 9.91564s; width: 1.94107px; height: 1.94107px; background: rgb(255, 255, 0); box-shadow: rgb(255, 255, 0) 0px 0px 6px, rgb(255, 255, 0) 0px 0px 12px;"></div><div class="particle" style="left: 25.8508%; animation-duration: 8.75258s; animation-delay: 4.55365s; width: 1.1779px; height: 1.1779px; background: rgb(0, 255, 0); box-shadow: rgb(0, 255, 0) 0px 0px 6px, rgb(0, 255, 0) 0px 0px 12px;"></div><div class="particle" style="left: 33.2452%; animation-duration: 20.1891s; animation-delay: 9.84319s; width: 2.43604px; height: 2.43604px; background: rgb(255, 0, 255); box-shadow: rgb(255, 0, 255) 0px 0px 6px, rgb(255, 0, 255) 0px 0px 12px;"></div><div class="particle" style="left: 98.6212%; animation-duration: 8.81282s; animation-delay: 1.31249s; width: 2.23708px; height: 2.23708px; background: rgb(0, 255, 0); box-shadow: rgb(0, 255, 0) 0px 0px 6px, rgb(0, 255, 0) 0px 0px 12px;"></div><div class="particle" style="left: 78.969%; animation-duration: 18.6423s; animation-delay: 5.29013s; width: 2.24194px; height: 2.24194px; background: rgb(0, 255, 255); box-shadow: rgb(0, 255, 255) 0px 0px 6px, rgb(0, 255, 255) 0px 0px 12px;"></div><div class="particle" style="left: 14.5628%; animation-duration: 10.8264s; animation-delay: 5.79032s; width: 2.79855px; height: 2.79855px; background: rgb(0, 255, 0); box-shadow: rgb(0, 255, 0) 0px 0px 6px, rgb(0, 255, 0) 0px 0px 12px;"></div><div class="particle" style="left: 68.4486%; animation-duration: 9.47054s; animation-delay: 7.33423s; width: 2.59934px; height: 2.59934px; background: rgb(0, 255, 0); box-shadow: rgb(0, 255, 0) 0px 0px 6px, rgb(0, 255, 0) 0px 0px 12px;"></div><div class="particle" style="left: 34.0938%; animation-duration: 11.3192s; animation-delay: 3.88474s; width: 1.59941px; height: 1.59941px; background: rgb(0, 255, 0); box-shadow: rgb(0, 255, 0) 0px 0px 6px, rgb(0, 255, 0) 0px 0px 12px;"></div><div class="particle" style="left: 7.5822%; animation-duration: 21.9515s; animation-delay: 1.62154s; width: 1.63961px; height: 1.63961px; background: rgb(255, 0, 255); box-shadow: rgb(255, 0, 255) 0px 0px 6px, rgb(255, 0, 255) 0px 0px 12px;"></div><div class="particle" style="left: 71.423%; animation-duration: 17.6118s; animation-delay: 7.50237s; width: 2.00742px; height: 2.00742px; background: rgb(255, 0, 255); box-shadow: rgb(255, 0, 255) 0px 0px 6px, rgb(255, 0, 255) 0px 0px 12px;"></div><div class="particle" style="left: 23.2538%; animation-duration: 19.8875s; animation-delay: 4.58339s; width: 2.76537px; height: 2.76537px; background: rgb(255, 0, 255); box-shadow: rgb(255, 0, 255) 0px 0px 6px, rgb(255, 0, 255) 0px 0px 12px;"></div><div class="particle" style="left: 61.7127%; animation-duration: 16.0413s; animation-delay: 5.06723s; width: 2.62134px; height: 2.62134px; background: rgb(255, 255, 0); box-shadow: rgb(255, 255, 0) 0px 0px 6px, rgb(255, 255, 0) 0px 0px 12px;"></div><div class="particle" style="left: 10.3528%; animation-duration: 17.759s; animation-delay: 4.59095s; width: 1.94321px; height: 1.94321px; background: rgb(0, 255, 0); box-shadow: rgb(0, 255, 0) 0px 0px 6px, rgb(0, 255, 0) 0px 0px 12px;"></div><div class="particle" style="left: 7.80393%; animation-duration: 8.42029s; animation-delay: 0.979436s; width: 1.79684px; height: 1.79684px; background: rgb(255, 0, 255); box-shadow: rgb(255, 0, 255) 0px 0px 6px, rgb(255, 0, 255) 0px 0px 12px;"></div><div class="particle" style="left: 56.0706%; animation-duration: 10.776s; animation-delay: 5.96842s; width: 2.01711px; height: 2.01711px; background: rgb(255, 255, 0); box-shadow: rgb(255, 255, 0) 0px 0px 6px, rgb(255, 255, 0) 0px 0px 12px;"></div><div class="particle" style="left: 4.70394%; animation-duration: 16.5538s; animation-delay: 2.48364s; width: 1.43309px; height: 1.43309px; background: rgb(255, 255, 0); box-shadow: rgb(255, 255, 0) 0px 0px 6px, rgb(255, 255, 0) 0px 0px 12px;"></div><div class="particle" style="left: 0.59846%; animation-duration: 16.2314s; animation-delay: 8.36253s; width: 2.50056px; height: 2.50056px; background: rgb(0, 255, 0); box-shadow: rgb(0, 255, 0) 0px 0px 6px, rgb(0, 255, 0) 0px 0px 12px;"></div><div class="particle" style="left: 70.2271%; animation-duration: 10.7629s; animation-delay: 5.39695s; width: 1.58972px; height: 1.58972px; background: rgb(255, 255, 0); box-shadow: rgb(255, 255, 0) 0px 0px 6px, rgb(255, 255, 0) 0px 0px 12px;"></div><div class="particle" style="left: 44.2898%; animation-duration: 15.9225s; animation-delay: 1.62913s; width: 2.13427px; height: 2.13427px; background: rgb(255, 255, 0); box-shadow: rgb(255, 255, 0) 0px 0px 6px, rgb(255, 255, 0) 0px 0px 12px;"></div><div class="particle" style="left: 61.3469%; animation-duration: 22.6334s; animation-delay: 8.54411s; width: 2.23859px; height: 2.23859px; background: rgb(0, 255, 0); box-shadow: rgb(0, 255, 0) 0px 0px 6px, rgb(0, 255, 0) 0px 0px 12px;"></div><div class="particle" style="left: 77.4988%; animation-duration: 11.8935s; animation-delay: 6.04007s; width: 2.57261px; height: 2.57261px; background: rgb(255, 255, 0); box-shadow: rgb(255, 255, 0) 0px 0px 6px, rgb(255, 255, 0) 0px 0px 12px;"></div><div class="particle" style="left: 50.3782%; animation-duration: 22.7135s; animation-delay: 6.60736s; width: 2.01108px; height: 2.01108px; background: rgb(0, 255, 0); box-shadow: rgb(0, 255, 0) 0px 0px 6px, rgb(0, 255, 0) 0px 0px 12px;"></div><div class="particle" style="left: 5.53683%; animation-duration: 10.7658s; animation-delay: 8.02009s; width: 1.25546px; height: 1.25546px; background: rgb(255, 0, 255); box-shadow: rgb(255, 0, 255) 0px 0px 6px, rgb(255, 0, 255) 0px 0px 12px;"></div><div class="particle" style="left: 65.9832%; animation-duration: 17.295s; animation-delay: 6.30072s; width: 1.03792px; height: 1.03792px; background: rgb(255, 0, 255); box-shadow: rgb(255, 0, 255) 0px 0px 6px, rgb(255, 0, 255) 0px 0px 12px;"></div><div class="particle" style="left: 59.2584%; animation-duration: 12.5169s; animation-delay: 4.54099s; width: 1.73966px; height: 1.73966px; background: rgb(255, 255, 0); box-shadow: rgb(255, 255, 0) 0px 0px 6px, rgb(255, 255, 0) 0px 0px 12px;"></div></div>
+
+<!-- Glitch effect lines -->
+<div class="glitch-line" style="top: 20%; background: rgb(0, 255, 0); box-shadow: rgb(0, 255, 0) 0px 0px 10px; opacity: 0;"></div>
+<div class="glitch-line" style="top: 50%; background: rgb(255, 0, 255); box-shadow: rgb(255, 0, 255) 0px 0px 10px; opacity: 0;"></div>
+<div class="glitch-line" style="top: 80%; background: rgb(0, 255, 0); box-shadow: rgb(0, 255, 0) 0px 0px 10px; opacity: 0;"></div>
+
+<header class="arcade-header">
+  <h1 class="arcade-title">CYBER ARCADE</h1>
+  <p class="arcade-subtitle">// SELECT YOUR GAME //</p>
+</header>
+
+<div class="neon-divider"></div>
+
+<div class="stats-bar" id="stats-bar">
+    <div class="stat-item">GAMES LOADED: <span>15</span></div>
+    <div class="stat-item">SYSTEM STATUS: <span style="color:#0f0;">ONLINE</span></div>
+    <div class="stat-item">COINS SAVED: <span>∞</span></div>
+  </div>
+
+  <main class="arcade-floor" id="arcade-floor">
+    <div class="cabinet" style="--cab-accent: #0ff; --cab-glow: #0ff33;" onclick="window.location.href=&#39;gridwar.html&#39;">
+      <div class="cabinet-body">
+        <div class="cabinet-trim"></div>
+        <div class="cabinet-screen">
+          <div class="screen-content">
+            <div class="screen-icon">⚔️</div>
+            <div class="screen-title">Gridwar</div>
+          </div>
+        </div>
+        <div class="cabinet-marquee">
+          <div class="marquee-title">Gridwar</div>
+          <div class="marquee-desc">Strategic grid-based tactical combat simulation</div>
+        </div>
+        <div class="cabinet-controls">
+          <div class="control-joystick"></div>
+          <div class="control-buttons">
+            <div class="control-btn"></div>
+            <div class="control-btn"></div>
+            <div class="control-btn"></div>
+          </div>
+        </div>
+        <a href="file:///C:/Users/BrainZero/Desktop/ProjectBrainZero/cline/Gridwar.html" class="cabinet-play">INSERT COIN</a>
+      </div>
+      <div class="cabinet-base"></div>
+    </div>
+
+    <div class="cabinet" style="--cab-accent: #0ff; --cab-glow: #0ff33;" onclick="window.location.href=&#39;cyber_dash.html&#39;">
+      <div class="cabinet-body">
+        <div class="cabinet-trim"></div>
+        <div class="cabinet-screen">
+          <div class="screen-content">
+            <div class="screen-icon">⚡</div>
+            <div class="screen-title">Cyber Dash</div>
+          </div>
+        </div>
+        <div class="cabinet-marquee">
+          <div class="marquee-title">Cyber Dash</div>
+          <div class="marquee-desc">Neon-lit endless runner through the digital frontier</div>
+        </div>
+        <div class="cabinet-controls">
+          <div class="control-joystick"></div>
+          <div class="control-buttons">
+            <div class="control-btn"></div>
+            <div class="control-btn"></div>
+            <div class="control-btn"></div>
+          </div>
+        </div>
+        <a href="file:///C:/Users/BrainZero/Desktop/ProjectBrainZero/cline/cyber_dash.html" class="cabinet-play">INSERT COIN</a>
+      </div>
+      <div class="cabinet-base"></div>
+    </div>
+  
+    <div class="cabinet" style="--cab-accent: #f0f; --cab-glow: #f0f33;" onclick="window.location.href=&#39;cyberfly.html&#39;">
+      <div class="cabinet-body">
+        <div class="cabinet-trim"></div>
+        <div class="cabinet-screen">
+          <div class="screen-content">
+            <div class="screen-icon">🧬</div>
+            <div class="screen-title">Cyberfly</div>
+          </div>
+        </div>
+        <div class="cabinet-marquee">
+          <div class="marquee-title">Cyberfly</div>
+          <div class="marquee-desc">Navigate through cybernetic obstacles at light speed</div>
+        </div>
+        <div class="cabinet-controls">
+          <div class="control-joystick"></div>
+          <div class="control-buttons">
+            <div class="control-btn"></div>
+            <div class="control-btn"></div>
+            <div class="control-btn"></div>
+          </div>
+        </div>
+        <a href="file:///C:/Users/BrainZero/Desktop/ProjectBrainZero/cline/cyberfly.html" class="cabinet-play">INSERT COIN</a>
+      </div>
+      <div class="cabinet-base"></div>
+    </div>
+  
+    <div class="cabinet" style="--cab-accent: #ff0; --cab-glow: #ff033;" onclick="window.location.href=&#39;falldown.html&#39;">
+      <div class="cabinet-body">
+        <div class="cabinet-trim"></div>
+        <div class="cabinet-screen">
+          <div class="screen-content">
+            <div class="screen-icon">💤</div>
+            <div class="screen-title">Falldown</div>
+          </div>
+        </div>
+        <div class="cabinet-marquee">
+          <div class="marquee-title">Falldown</div>
+          <div class="marquee-desc">Plunge into the abyss and survive the descent</div>
+        </div>
+        <div class="cabinet-controls">
+          <div class="control-joystick"></div>
+          <div class="control-buttons">
+            <div class="control-btn"></div>
+            <div class="control-btn"></div>
+            <div class="control-btn"></div>
+          </div>
+        </div>
+        <a href="file:///C:/Users/BrainZero/Desktop/ProjectBrainZero/cline/falldown.html" class="cabinet-play">INSERT COIN</a>
+      </div>
+      <div class="cabinet-base"></div>
+    </div>
+  
+    <div class="cabinet" style="--cab-accent: #f80; --cab-glow: #f8033;" onclick="window.location.href=&#39;missile_command.html&#39;">
+      <div class="cabinet-body">
+        <div class="cabinet-trim"></div>
+        <div class="cabinet-screen">
+          <div class="screen-content">
+            <div class="screen-icon">🔫</div>
+            <div class="screen-title">Missile Command</div>
+          </div>
+        </div>
+        <div class="cabinet-marquee">
+          <div class="marquee-title">Missile Command</div>
+          <div class="marquee-desc">Defend the grid from incoming missile threats</div>
+        </div>
+        <div class="cabinet-controls">
+          <div class="control-joystick"></div>
+          <div class="control-buttons">
+            <div class="control-btn"></div>
+            <div class="control-btn"></div>
+            <div class="control-btn"></div>
+          </div>
+        </div>
+        <a href="file:///C:/Users/BrainZero/Desktop/ProjectBrainZero/cline/missile_command.html" class="cabinet-play">INSERT COIN</a>
+      </div>
+      <div class="cabinet-base"></div>
+    </div>
+  
+    <div class="cabinet" style="--cab-accent: #0f0; --cab-glow: #0f033;" onclick="window.location.href=&#39;canyon_runner.html&#39;">
+      <div class="cabinet-body">
+        <div class="cabinet-trim"></div>
+        <div class="cabinet-screen">
+          <div class="screen-content">
+            <div class="screen-icon">🏞️</div>
+            <div class="screen-title">Canyon Runner</div>
+          </div>
+        </div>
+        <div class="cabinet-marquee">
+          <div class="marquee-title">Canyon Runner</div>
+          <div class="marquee-desc">Thread through procedurally generated digital canyons</div>
+        </div>
+        <div class="cabinet-controls">
+          <div class="control-joystick"></div>
+          <div class="control-buttons">
+            <div class="control-btn"></div>
+            <div class="control-btn"></div>
+            <div class="control-btn"></div>
+          </div>
+        </div>
+        <a href="file:///C:/Users/BrainZero/Desktop/ProjectBrainZero/cline/canyon_runner.html" class="cabinet-play">INSERT COIN</a>
+      </div>
+      <div class="cabinet-base"></div>
+    </div>
+  
+    <div class="cabinet" style="--cab-accent: #f44; --cab-glow: #f4433;" onclick="window.location.href=&#39;tetris.html&#39;">
+      <div class="cabinet-body">
+        <div class="cabinet-trim"></div>
+        <div class="cabinet-screen">
+          <div class="screen-content">
+            <div class="screen-icon">🫹</div>
+            <div class="screen-title">Neon Tetris</div>
+          </div>
+        </div>
+        <div class="cabinet-marquee">
+          <div class="marquee-title">Neon Tetris</div>
+          <div class="marquee-desc">Classic block-stacking reimagined in neon</div>
+        </div>
+        <div class="cabinet-controls">
+          <div class="control-joystick"></div>
+          <div class="control-buttons">
+            <div class="control-btn"></div>
+            <div class="control-btn"></div>
+            <div class="control-btn"></div>
+          </div>
+        </div>
+        <a href="file:///C:/Users/BrainZero/Desktop/ProjectBrainZero/cline/tetris.html" class="cabinet-play">INSERT COIN</a>
+      </div>
+      <div class="cabinet-base"></div>
+    </div>
+  
+  
+  
+  </main>
+
+<footer class="arcade-footer">
+  SYSTEM ONLINE · ALL COINS ACCEPTED · PLAY AT YOUR OWN RISK
+</footer>
+
+<script>
+// ============================================================
+// ============================================================
+// ============================================================
+const GAME_MANIFEST = [
+  {
+    file: "Gridwar.html",
+    name: "Gridwar",
+    icon: "\u2694\ufe0f",
+    description: "Strategic grid-based tactical combat simulation"
+  },
+  {
+    file: "tetris.html",
+    name: "Neon Tetris",
+    icon: "\ud83e\uddf1",
+    description: "Classic block-stacking reimagined in neon"
+  },
+  {
+    file: "cyberfly.html",
+    name: "Cyberfly",
+    icon: "\ud83e\uddec",
+    description: "Navigate through cybernetic obstacles at light speed"
+  },
+  {
+    file: "cyber_snake.html",
+    name: "Cyber Snake",
+    icon: "\ud83d\udc0d",
+    description: "Slither through the neon grid, consume data packets"
+  },
+  {
+    file: "cyber_bear.html",
+    name: "Cyber Bear",
+    icon: "\ud83d\udc3b",
+    description: "Navigate the digital wilds as a cybernetic bear"
+  },
+  {
+    file: "cyber_frogger.html",
+    name: "Cyber Frogger",
+    icon: "\ud83d\udc05",
+    description: "Cross the data-streams and avoid digital predators"
+  },
+  {
+    file: "cyber_joust.html",
+    name: "Cyber Joust",
+    icon: "\ud83d\udd13",
+    description: "Soar through neon skies in aerial combat"
+  },
+  {
+    file: "cyberpunk_trivia.html",
+    name: "Cyberpunk Trivia",
+    icon: "\ud83e\udde0",
+    description: "Test your knowledge of the neon underground"
+  },
+  {
+    file: "cyber_dash_editor.html",
+    name: "Cyber Dash Editor",
+    icon: "\ud83d\udcdd",
+    description: "Design and share custom cyber courses"
+  },
+  {
+    file: "falldown.html",
+    name: "Falldown",
+    icon: "\ud83d\udca4",
+    description: "Plunge into the abyss and survive the descent"
+  },
+  {
+    file: "missile_command.html",
+    name: "Missile Command",
+    icon: "\ud83d\udd2b",
+    description: "Defend the grid from incoming missile threats"
+  },
+  {
+    file: "canyon_runner.html",
+    name: "Canyon Runner",
+    icon: "\ud83c\udfde\ufe0f",
+    description: "Thread through procedurally generated digital canyons"
+  },
+  {
+    file: "neon_brickout.html",
+    name: "Neon Brickout",
+    icon: "\ud83d\udd25",
+    description: "Cyberpunk brick breaker with neon power-ups"
+  },
+  {
+    file: "neon_overdrive.html",
+    name: "Neon Overdrive",
+    icon: "\ud83c\udfce\ufe0f",
+    description: "Two-player drift racing on a neon circuit"
+  },
+  {
+    file: "cyber_dash.html",
+    name: "Cyber Dash",
+    icon: "\u26a1",
+    description: "Neon-lit endless runner through the digital frontier"
+  }
+];
+
+// ============================================================
+// RENDER FUNCTIONS
+// ============================================================
+
+function getGameName(file) {
+  // Try to find in manifest, fallback to formatted filename
+  const game = GAME_MANIFEST.find(g => g.file === file);
+  return game || null;
+}
+
+function formatGameName(file) {
+  // Convert filename to display name: cyber_dash.html -> Cyber Dash
+  return file.replace('.html', '').split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+function renderCabinet(game, index) {
+  const accentColors = ['#0ff','#f0f','#ff0','#f80','#0f0','#f44','#48f','#f0a','#0af','#fa0'];
+  const accent = accentColors[index % accentColors.length];
+  const isOutOfOrder = game.name === 'Neon Overdrive' || game.name === 'Cyber Dash';
+  
+  return `
+    <div class="cabinet" style="--cab-accent: ${accent}; --cab-glow: ${accent}33; ${isOutOfOrder ? 'opacity:0.7;' : ''}" onclick="window.location.href='${game.file}'">
+      <div class="cabinet-body" ${isOutOfOrder ? 'style="filter:saturate(0.5) brightness(0.7);"' : ''}>
+        <div class="cabinet-trim"></div>
+        <div class="cabinet-screen">
+          <div class="screen-content">
+            <div class="screen-icon">${game.icon || '\ud83c\udfae'}</div>
+            <div class="screen-title">${game.name || formatGameName(game.file)}</div>
+          </div>
+        </div>
+        <div class="cabinet-marquee">
+          <div class="marquee-title">${game.name || formatGameName(game.file)}</div>
+          ${game.description ? `<div class="marquee-desc">${game.description}</div>` : ''}
+        </div>
+        <div class="cabinet-controls">
+          <div class="control-joystick"></div>
+          <div class="control-buttons">
+            <div class="control-btn"></div>
+            <div class="control-btn"></div>
+            <div class="control-btn"></div>
+          </div>
+        </div>
+        <a href="${game.file}" class="cabinet-play">INSERT COIN</a>
+      </div>
+      <div class="cabinet-base"></div>
+      <div class="out-of-order-badge" ${isOutOfOrder ? 'style="display:block;"' : 'style="display:none;"'}><span>OUT OF ORDER</span></div>
+    </div>
+  `;
+}
+
+function renderArcade() {
+  const floor = document.getElementById('arcade-floor');
+  const statsBar = document.getElementById('stats-bar');
+  
+  if (GAME_MANIFEST.length === 0) {
+    floor.innerHTML = '<div class="no-games"><span>\ud83c\udfae</span>NO GAMES FOUND<br><small>Add .html game files to this directory</small></div>';
+    return;
+  }
+
+  // Render cabinets
+  floor.innerHTML = GAME_MANIFEST.map((game, i) => renderCabinet(game, i)).join('');
+
+  // Render stats
+  const genres = new Set();
+  statsBar.innerHTML = `
+    <div class="stat-item">GAMES LOADED: <span>${GAME_MANIFEST.length}</span></div>
+    <div class="stat-item">SYSTEM STATUS: <span style="color:#0f0;">ONLINE</span></div>
+    <div class="stat-item">COINS SAVED: <span>&infin;</span></div>
+  `;
+}
+
+// ============================================================
+// PARTICLES
+// ============================================================
+function createParticles() {
+  const container = document.getElementById('particles');
+  const count = 30;
+  for (let i = 0; i < count; i++) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    p.style.left = Math.random() * 100 + '%';
+    p.style.animationDuration = (8 + Math.random() * 15) + 's';
+    p.style.animationDelay = (Math.random() * 10) + 's';
+    p.style.width = (1 + Math.random() * 2) + 'px';
+    p.style.height = p.style.width;
+    const colors = ['#0ff', '#f0f', '#ff0', '#0f0'];
+    const c = colors[Math.floor(Math.random() * colors.length)];
+    p.style.background = c;
+    p.style.boxShadow = `0 0 6px ${c}, 0 0 12px ${c}`;
+    container.appendChild(p);
+  }
+}
+
+// ============================================================
+// GLITCH EFFECT (occasional random scanline flash)
+// ============================================================
+function triggerGlitch() {
+  const lines = document.querySelectorAll('.glitch-line');
+  const line = lines[Math.floor(Math.random() * lines.length)];
+  const cabinet = document.querySelectorAll('.cabinet')[Math.floor(Math.random() * document.querySelectorAll('.cabinet').length)];
+  const color = cabinet ? getComputedStyle(cabinet).getPropertyValue('--cab-accent').trim() : '#0ff';
+  
+  line.style.background = color;
+  line.style.boxShadow = `0 0 10px ${color}`;
+  line.style.opacity = '0.3';
+  
+  setTimeout(() => { line.style.opacity = '0'; }, 80);
+  setTimeout(triggerGlitch, 2000 + Math.random() * 5000);
+}
+
+// ============================================================
+// INIT
+
+
+// ============================================================
+// RENDER FUNCTIONS
+// ============================================================
+
+function getGameName(file) {
+  // Try to find in manifest, fallback to formatted filename
+  const game = GAME_MANIFEST.find(g => g.file === file);
+  return game || null;
+}
+
+function formatGameName(file) {
+  // Convert filename to display name: cyber_dash.html -> Cyber Dash
+  return file.replace('.html', '').split('_').map(w => w.charAt(0).toUpperCase() + w.slice(1)).join(' ');
+}
+
+function renderCabinet(game, index) {
+  const accentColors = ['#0ff','#f0f','#ff0','#f80','#0f0','#f44','#48f','#f0a','#0af','#fa0'];
+  const accent = accentColors[index % accentColors.length];
+  const isOutOfOrder = game.name === 'Neon Overdrive' || game.name === 'Cyber Dash';
+  
+  return `
+    <div class="cabinet" style="--cab-accent: ${accent}; --cab-glow: ${accent}33; ${isOutOfOrder ? 'opacity:0.7;' : ''}" onclick="window.location.href='${game.file}'">
+      <div class="cabinet-body" ${isOutOfOrder ? 'style="filter:saturate(0.5) brightness(0.7);"' : ''}>
+        <div class="cabinet-trim"></div>
+        <div class="cabinet-screen">
+          <div class="screen-content">
+            <div class="screen-icon">${game.icon || '\ud83c\udfae'}</div>
+            <div class="screen-title">${game.name || formatGameName(game.file)}</div>
+          </div>
+        </div>
+        <div class="cabinet-marquee">
+          <div class="marquee-title">${game.name || formatGameName(game.file)}</div>
+          ${game.description ? `<div class="marquee-desc">${game.description}</div>` : ''}
+        </div>
+        <div class="cabinet-controls">
+          <div class="control-joystick"></div>
+          <div class="control-buttons">
+            <div class="control-btn"></div>
+            <div class="control-btn"></div>
+            <div class="control-btn"></div>
+          </div>
+        </div>
+        <a href="${game.file}" class="cabinet-play">INSERT COIN</a>
+      </div>
+      <div class="cabinet-base"></div>
+      <div class="out-of-order-badge" ${isOutOfOrder ? 'style="display:block;"' : 'style="display:none;"'}><span>OUT OF ORDER</span></div>
+    </div>
+  `;
+}
+
+function renderArcade() {
+  const floor = document.getElementById('arcade-floor');
+  const statsBar = document.getElementById('stats-bar');
+  
+  if (GAME_MANIFEST.length === 0) {
+    floor.innerHTML = '<div class="no-games"><span>\ud83c\udfae</span>NO GAMES FOUND<br><small>Add .html game files to this directory</small></div>';
+    return;
+  }
+
+  // Render cabinets
+  floor.innerHTML = GAME_MANIFEST.map((game, i) => renderCabinet(game, i)).join('');
+
+  // Render stats
+  const genres = new Set();
+  statsBar.innerHTML = `
+    <div class="stat-item">GAMES LOADED: <span>${GAME_MANIFEST.length}</span></div>
+    <div class="stat-item">SYSTEM STATUS: <span style="color:#0f0;">ONLINE</span></div>
+    <div class="stat-item">COINS SAVED: <span>&infin;</span></div>
+  `;
+}
+
+// ============================================================
+// PARTICLES
+// ============================================================
+function createParticles() {
+  const container = document.getElementById('particles');
+  const count = 30;
+  for (let i = 0; i < count; i++) {
+    const p = document.createElement('div');
+    p.className = 'particle';
+    p.style.left = Math.random() * 100 + '%';
+    p.style.animationDuration = (8 + Math.random() * 15) + 's';
+    p.style.animationDelay = (Math.random() * 10) + 's';
+    p.style.width = (1 + Math.random() * 2) + 'px';
+    p.style.height = p.style.width;
+    const colors = ['#0ff', '#f0f', '#ff0', '#0f0'];
+    const c = colors[Math.floor(Math.random() * colors.length)];
+    p.style.background = c;
+    p.style.boxShadow = `0 0 6px ${c}, 0 0 12px ${c}`;
+    container.appendChild(p);
+  }
+}
+
+// ============================================================
+// GLITCH EFFECT (occasional random scanline flash)
+// ============================================================
+function triggerGlitch() {
+  const lines = document.querySelectorAll('.glitch-line');
+  const line = lines[Math.floor(Math.random() * lines.length)];
+  const cabinet = document.querySelectorAll('.cabinet')[Math.floor(Math.random() * document.querySelectorAll('.cabinet').length)];
+  const color = cabinet ? getComputedStyle(cabinet).getPropertyValue('--cab-accent').trim() : '#0ff';
+  
+  line.style.background = color;
+  line.style.boxShadow = `0 0 10px ${color}`;
+  line.style.opacity = '0.3';
+  
+  setTimeout(() => { line.style.opacity = '0'; }, 80);
+  setTimeout(triggerGlitch, 2000 + Math.random() * 5000);
+}
+
+// ============================================================
+// INIT
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+  renderArcade();
+  createParticles();
+  setTimeout(triggerGlitch, 3000);
+});
+</script>
+
+</body></html>

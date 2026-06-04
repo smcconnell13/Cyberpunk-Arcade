@@ -1,0 +1,687 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CYBER ARCADE :: ADMIN</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  body {
+    background: #0a0a12;
+    min-height: 100vh;
+    font-family: 'Share Tech Mono', monospace;
+    color: #e0e0ff;
+    overflow-x: hidden;
+    position: relative;
+  }
+
+  body::after {
+    content: '';
+    position: fixed;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(
+      0deg,
+      transparent,
+      transparent 2px,
+      rgba(0,0,0,0.1) 2px,
+      rgba(0,0,0,0.1) 4px
+    );
+    pointer-events: none;
+    z-index: 1000;
+  }
+
+  .admin-header {
+    text-align: center;
+    padding: 30px 20px 20px;
+    position: relative;
+    z-index: 10;
+  }
+
+  .admin-title {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(24px, 5vw, 48px);
+    font-weight: 900;
+    text-transform: uppercase;
+    letter-spacing: 0.15em;
+    background: linear-gradient(180deg, #f00 0%, #ff0 50%, #f0f 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    filter: drop-shadow(0 0 20px rgba(255,0,0,0.5));
+  }
+
+  .admin-subtitle {
+    font-family: 'Orbitron', sans-serif;
+    font-size: clamp(10px, 2vw, 16px);
+    color: rgba(255,100,100,0.7);
+    letter-spacing: 0.5em;
+    margin-top: 8px;
+  }
+
+  .admin-badge {
+    display: inline-block;
+    padding: 4px 16px;
+    border: 1px solid #f00;
+    color: #f00;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    letter-spacing: 0.3em;
+    margin-top: 12px;
+    text-transform: uppercase;
+    animation: badgePulse 2s ease-in-out infinite alternate;
+  }
+
+  @keyframes badgePulse {
+    0% { box-shadow: 0 0 5px rgba(255,0,0,0.3); }
+    100% { box-shadow: 0 0 15px rgba(255,0,0,0.6); }
+  }
+
+  .neon-divider {
+    width: 80%;
+    max-width: 600px;
+    height: 2px;
+    margin: 20px auto;
+    background: linear-gradient(90deg, transparent, #f00, #f0f, #f00, transparent);
+    box-shadow: 0 0 10px #f00, 0 0 20px rgba(255,0,255,0.3);
+    position: relative;
+    z-index: 10;
+  }
+
+  /* Summary bar */
+  .summary-bar {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    justify-content: center;
+    gap: 40px;
+    padding: 10px 20px;
+    flex-wrap: wrap;
+  }
+
+  .summary-item {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    color: rgba(255,255,255,0.5);
+    letter-spacing: 0.2em;
+  }
+
+  .summary-item span.active {
+    color: #0f0;
+    font-weight: 700;
+    text-shadow: 0 0 10px #0f0;
+  }
+
+  .summary-item span.inactive {
+    color: #f00;
+    font-weight: 700;
+    text-shadow: 0 0 10px #f00;
+  }
+
+  /* Control buttons */
+  .control-row {
+    position: relative;
+    z-index: 10;
+    display: flex;
+    justify-content: center;
+    gap: 16px;
+    padding: 16px 20px;
+    flex-wrap: wrap;
+  }
+
+  .ctrl-btn {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    padding: 8px 20px;
+    background: transparent;
+    border: 1px solid #f00;
+    color: #f00;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    text-transform: uppercase;
+  }
+
+  .ctrl-btn:hover {
+    background: rgba(255,0,0,0.15);
+    box-shadow: 0 0 15px rgba(255,0,0,0.4);
+  }
+
+  .ctrl-btn.primary {
+    border-color: #0f0;
+    color: #0f0;
+  }
+
+  .ctrl-btn.primary:hover {
+    background: rgba(0,255,0,0.15);
+    box-shadow: 0 0 15px rgba(0,255,0,0.4);
+  }
+
+  /* Game list */
+  .game-list {
+    position: relative;
+    z-index: 10;
+    max-width: 800px;
+    margin: 20px auto;
+    padding: 0 20px;
+  }
+
+  .game-item {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    padding: 16px 20px;
+    margin-bottom: 8px;
+    background: linear-gradient(90deg, rgba(20,20,40,0.8), rgba(10,10,26,0.9));
+    border: 1px solid rgba(255,255,255,0.05);
+    border-radius: 6px;
+    transition: all 0.2s ease;
+  }
+
+  .game-item:hover {
+    border-color: rgba(255,0,0,0.3);
+    background: linear-gradient(90deg, rgba(30,20,40,0.9), rgba(15,10,30,0.95));
+  }
+
+  .game-item.disabled {
+    opacity: 0.4;
+  }
+
+  .game-icon {
+    font-size: 28px;
+    width: 40px;
+    text-align: center;
+    flex-shrink: 0;
+  }
+
+  .game-info {
+    flex: 1;
+    min-width: 0;
+  }
+
+  .game-name {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 14px;
+    font-weight: 700;
+    color: #fff;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+  }
+
+  .game-file {
+    font-size: 11px;
+    color: rgba(200,200,255,0.4);
+    margin-top: 4px;
+    letter-spacing: 0.05em;
+    word-break: break-all;
+  }
+
+  /* Custom toggle switch */
+  .toggle-switch {
+    position: relative;
+    width: 52px;
+    height: 26px;
+    flex-shrink: 0;
+  }
+
+  .toggle-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+  }
+
+  .toggle-slider {
+    position: absolute;
+    cursor: pointer;
+    top: 0; left: 0; right: 0; bottom: 0;
+    background: #333;
+    border-radius: 26px;
+    transition: 0.3s;
+    border: 1px solid rgba(255,255,255,0.1);
+  }
+
+  .toggle-slider::before {
+    content: '';
+    position: absolute;
+    height: 20px;
+    width: 20px;
+    left: 2px;
+    bottom: 2px;
+    background: #888;
+    border-radius: 50%;
+    transition: 0.3s;
+  }
+
+  .toggle-switch input:checked + .toggle-slider {
+    background: rgba(0,255,0,0.2);
+    border-color: #0f0;
+    box-shadow: 0 0 10px rgba(0,255,0,0.3);
+  }
+
+  .toggle-switch input:checked + .toggle-slider::before {
+    transform: translateX(26px);
+    background: #0f0;
+    box-shadow: 0 0 8px #0f0;
+  }
+
+  .toggle-switch input:disabled + .toggle-slider {
+    opacity: 0.4;
+    cursor: not-allowed;
+  }
+
+  /* Status indicator */
+  .status-indicator {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 10px;
+    letter-spacing: 0.15em;
+    padding: 4px 10px;
+    border-radius: 3px;
+    flex-shrink: 0;
+    text-transform: uppercase;
+  }
+
+  .status-indicator.on {
+    color: #0f0;
+    border: 1px solid rgba(0,255,0,0.3);
+    background: rgba(0,255,0,0.05);
+  }
+
+  .status-indicator.off {
+    color: #f00;
+    border: 1px solid rgba(255,0,0,0.3);
+    background: rgba(255,0,0,0.05);
+  }
+
+  /* Save notification */
+  .save-notification {
+    position: fixed;
+    bottom: 30px;
+    left: 50%;
+    transform: translateX(-50%) translateY(100px);
+    padding: 12px 30px;
+    background: rgba(0,255,0,0.1);
+    border: 1px solid #0f0;
+    color: #0f0;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    z-index: 2000;
+    transition: transform 0.3s ease;
+    box-shadow: 0 0 20px rgba(0,255,0,0.3);
+  }
+
+  .save-notification.show {
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* Back to arcade link */
+  .back-link {
+    position: relative;
+    z-index: 10;
+    text-align: center;
+    padding: 20px;
+  }
+
+  .back-btn {
+    display: inline-block;
+    padding: 10px 30px;
+    border: 1px solid rgba(0,255,255,0.4);
+    color: #0ff;
+    font-family: 'Orbitron', sans-serif;
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    text-decoration: none;
+    text-transform: uppercase;
+    transition: all 0.2s ease;
+  }
+
+  .back-btn:hover {
+    background: rgba(0,255,255,0.1);
+    box-shadow: 0 0 20px rgba(0,255,255,0.3);
+  }
+
+  /* Footer */
+  .admin-footer {
+    position: relative;
+    z-index: 10;
+    text-align: center;
+    padding: 30px 20px;
+    color: rgba(255,100,100,0.3);
+    font-size: 11px;
+    letter-spacing: 0.3em;
+  }
+
+  @media (max-width: 640px) {
+    .game-item {
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .toggle-switch {
+      position: absolute;
+      top: 16px;
+      right: 16px;
+    }
+    .status-indicator {
+      position: absolute;
+      top: 50px;
+      right: 16px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<header class="admin-header">
+  <h1 class="admin-title">ARCADE ADMIN</h1>
+  <p class="admin-subtitle">// GAME MANAGEMENT //</p>
+  <div class="admin-badge">AUTHORIZED PERSONNEL ONLY</div>
+</header>
+
+<div class="neon-divider"></div>
+
+<div class="summary-bar" id="summary-bar">
+  <div class="summary-item">ACTIVE: <span class="active" id="count-active">0</span></div>
+  <div class="summary-item">INACTIVE: <span class="inactive" id="count-inactive">0</span></div>
+  <div class="summary-item">TOTAL: <span id="count-total">0</span></div>
+</div>
+
+<div class="control-row">
+  <button class="ctrl-btn primary" onclick="toggleAll(true)">ENABLE ALL</button>
+  <button class="ctrl-btn primary" onclick="toggleAll(false)">DISABLE ALL</button>
+  <button class="ctrl-btn" onclick="resetDefaults()">RESET DEFAULTS</button>
+  <button class="ctrl-btn" onclick="exportConfig()">EXPORT CONFIG</button>
+  <button class="ctrl-btn" onclick="document.getElementById('import-file').click()">IMPORT CONFIG</button>
+  <input type="file" id="import-file" accept=".json" style="display:none" onchange="importConfig(event)">
+</div>
+
+<main class="game-list" id="game-list"></main>
+
+<div class="back-link">
+  <a href="arcade.html" class="back-btn">&#8592; RETURN TO ARCADE</a>
+</div>
+
+<footer class="admin-footer">
+  SYSTEM ADMIN INTERFACE · CHANGES AUTO-SAVE
+</footer>
+
+<div class="save-notification" id="notification">CONFIG SAVED</div>
+
+<script>
+// ============================================================
+// GAME MANIFEST - Must match arcade.html GAME_MANIFEST
+// ============================================================
+
+const GAME_MANIFEST = [
+  {
+    file: "Gridwar.html",
+    name: "Gridwar",
+    icon: "\u2694\ufe0f",
+    description: "Strategic grid-based tactical combat simulation"
+  },
+  {
+    file: "tetris.html",
+    name: "Neon Tetris",
+    icon: "\ud83e\uddf1",
+    description: "Classic block-stacking reimagined in neon"
+  },
+  {
+    file: "cyberfly.html",
+    name: "Cyberfly",
+    icon: "\ud83e\uddec",
+    description: "Navigate through cybernetic obstacles at light speed"
+  },
+  {
+    file: "cyber_snake.html",
+    name: "Cyber Snake",
+    icon: "\ud83d\udc0d",
+    description: "Slither through the neon grid, consume data packets"
+  },
+  {
+    file: "cyber_bear.html",
+    name: "Cyber Bear",
+    icon: "\ud83d\udc3b",
+    description: "Navigate the digital wilds as a cybernetic bear"
+  },
+  {
+    file: "cyber_frogger.html",
+    name: "Cyber Frogger",
+    icon: "\ud83d\udc05",
+    description: "Cross the data-streams and avoid digital predators"
+  },
+  {
+    file: "cyber_joust.html",
+    name: "Cyber Joust",
+    icon: "\ud83d\udd13",
+    description: "Soar through neon skies in aerial combat"
+  },
+  {
+    file: "cyberpunk_trivia.html",
+    name: "Cyberpunk Trivia",
+    icon: "\ud83e\udde0",
+    description: "Test your knowledge of the neon underground"
+  },
+  {
+    file: "cyber_dash_editor.html",
+    name: "Cyber Dash Editor",
+    icon: "\ud83d\udcdd",
+    description: "Design and share custom cyber courses"
+  },
+  {
+    file: "falldown.html",
+    name: "Falldown",
+    icon: "\ud83d\udca4",
+    description: "Plunge into the abyss and survive the descent"
+  },
+  {
+    file: "missile_command.html",
+    name: "Missile Command",
+    icon: "\ud83d\udd2b",
+    description: "Defend the grid from incoming missile threats"
+  },
+  {
+    file: "canyon_runner.html",
+    name: "Canyon Runner",
+    icon: "\ud83c\udfde\ufe0f",
+    description: "Thread through procedurally generated digital canyons"
+  },
+  {
+    file: "neon_brickout.html",
+    name: "Neon Brickout",
+    icon: "\ud83d\udd25",
+    description: "Cyberpunk brick breaker with neon power-ups"
+  },
+  {
+    file: "neon_overdrive.html",
+    name: "Neon Overdrive",
+    icon: "\ud83c\udfce\ufe0f",
+    description: "Two-player drift racing on a neon circuit"
+  },
+  {
+    file: "cyber_dash.html",
+    name: "Cyber Dash",
+    icon: "\u26a1",
+    description: "Neon-lit endless runner through the digital frontier"
+  }
+];
+
+// ============================================================
+// STORAGE KEY
+// ============================================================
+const STORAGE_KEY = 'arcade_game_settings';
+
+// ============================================================
+// DEFAULT SETTINGS - Gridwar starts disabled
+// ============================================================
+function getDefaultSettings() {
+  const defaults = {};
+  GAME_MANIFEST.forEach(g => {
+    // All enabled by default
+    defaults[g.file] = true;
+  });
+  return defaults;
+}
+
+// ============================================================
+// LOAD / SAVE SETTINGS
+// ============================================================
+function loadSettings() {
+  try {
+    const stored = localStorage.getItem(STORAGE_KEY);
+    if (stored) {
+      return JSON.parse(stored);
+    }
+  } catch (e) {
+    console.warn('Failed to load settings:', e);
+  }
+  return getDefaultSettings();
+}
+
+function saveSettings(settings) {
+  try {
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+    showNotification('CONFIG SAVED');
+  } catch (e) {
+    console.warn('Failed to save settings:', e);
+  }
+}
+
+// ============================================================
+// RENDER GAME LIST
+// ============================================================
+function renderGameList() {
+  const list = document.getElementById('game-list');
+  const settings = loadSettings();
+  let activeCount = 0;
+  let inactiveCount = 0;
+
+  list.innerHTML = GAME_MANIFEST.map((game, index) => {
+    const isActive = settings[game.file] !== false; // default true
+    if (isActive) activeCount++; else inactiveCount++;
+
+    return `
+      <div class="game-item ${isActive ? '' : 'disabled'}" data-index="${index}">
+        <div class="game-icon">${game.icon}</div>
+        <div class="game-info">
+          <div class="game-name">${game.name}</div>
+          <div class="game-file">${game.file}</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" ${isActive ? 'checked' : ''} onchange="toggleGame(${index}, this.checked)">
+          <span class="toggle-slider"></span>
+        </label>
+        <div class="status-indicator ${isActive ? 'on' : 'off'}">${isActive ? 'ACTIVE' : 'DISABLED'}</div>
+      </div>
+    `;
+  }).join('');
+
+  // Update summary
+  document.getElementById('count-active').textContent = activeCount;
+  document.getElementById('count-inactive').textContent = inactiveCount;
+  document.getElementById('count-total').textContent = GAME_MANIFEST.length;
+}
+
+// ============================================================
+// TOGGLE GAME
+// ============================================================
+function toggleGame(index, enabled) {
+  const settings = loadSettings();
+  const game = GAME_MANIFEST[index];
+  settings[game.file] = enabled;
+  saveSettings(settings);
+  
+  // Re-render to update styling
+  renderGameList();
+}
+
+// ============================================================
+// TOGGLE ALL
+// ============================================================
+function toggleAll(enabled) {
+  if (!enabled && !confirm('Disable ALL games? The arcade will appear empty.')) return;
+  
+  const settings = {};
+  GAME_MANIFEST.forEach(g => {
+    settings[g.file] = enabled;
+  });
+  saveSettings(settings);
+  renderGameList();
+}
+
+// ============================================================
+// RESET DEFAULTS
+// ============================================================
+function resetDefaults() {
+  if (!confirm('Reset all games to default settings?')) return;
+  saveSettings(getDefaultSettings());
+  renderGameList();
+}
+
+// ============================================================
+// EXPORT / IMPORT CONFIG
+// ============================================================
+function exportConfig() {
+  const settings = loadSettings();
+  const config = {
+    version: '1.0',
+    exportedAt: new Date().toISOString(),
+    settings: settings
+  };
+  const blob = new Blob([JSON.stringify(config, null, 2)], { type: 'application/json' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `arcade_config_${Date.now()}.json`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function importConfig(event) {
+  const file = event.target.files[0];
+  if (!file) return;
+  
+  const reader = new FileReader();
+  reader.onload = function(e) {
+    try {
+      const config = JSON.parse(e.target.result);
+      if (config && config.settings) {
+        if (confirm('Import this configuration? Current settings will be replaced.')) {
+          saveSettings(config.settings);
+          renderGameList();
+        }
+      } else {
+        alert('Invalid configuration file format.');
+      }
+    } catch (err) {
+      alert('Failed to parse configuration file.');
+    }
+  };
+  reader.readAsText(file);
+  event.target.value = '';
+}
+
+// ============================================================
+// NOTIFICATION
+// ============================================================
+let notifTimeout;
+function showNotification(text) {
+  const notif = document.getElementById('notification');
+  notif.textContent = text;
+  notif.classList.add('show');
+  clearTimeout(notifTimeout);
+  notifTimeout = setTimeout(() => {
+    notif.classList.remove('show');
+  }, 2000);
+}
+
+// ============================================================
+// INIT
+// ============================================================
+document.addEventListener('DOMContentLoaded', () => {
+  renderGameList();
+});
+</script>
+
+</body>
+</html>

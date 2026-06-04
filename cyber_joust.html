@@ -1,0 +1,1739 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEON JOUST // 2087</title>
+<style>
+  html, body {
+    width: 100%; height: 100%; margin: 0; padding: 0;
+    background: #000; overflow: hidden;
+    font-family: 'Courier New', monospace;
+  }
+  canvas { display: block; }
+
+  #scanlines {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none; z-index: 10;
+    background: repeating-linear-gradient(
+      0deg, rgba(0,0,0,0.12), rgba(0,0,0,0.12) 1px,
+      transparent 1px, transparent 3px
+    );
+  }
+
+  #vignette {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none; z-index: 11;
+    background: radial-gradient(ellipse at center, transparent 55%, rgba(0,0,0,0.65) 100%);
+  }
+
+  @keyframes flicker {
+    0%, 100% { opacity: 1; }
+    92% { opacity: 1; }
+    93% { opacity: 0.88; }
+    94% { opacity: 1; }
+    97% { opacity: 0.92; }
+    98% { opacity: 1; }
+  }
+
+  #overlay {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    background: rgba(0,0,5,0.94);
+    z-index: 20; transition: opacity 0.4s;
+  }
+  #overlay.hidden { opacity: 0; pointer-events: none; }
+
+  #title {
+    font-size: clamp(36px, 6vw, 72px);
+    font-weight: bold; color: #ffbf00;
+    text-shadow: 0 0 10px #ffbf00, 0 0 30px #ffb000, 0 0 80px #ff8c00;
+    letter-spacing: 6px; margin-bottom: 4px;
+    animation: flicker 5s infinite alternate;
+  }
+  #subtitle {
+    font-size: clamp(12px, 1.6vw, 22px);
+    color: #0ff; letter-spacing: 6px;
+    text-shadow: 0 0 8px #0ff, 0 0 20px rgba(0,255,255,0.5);
+    margin-bottom: 30px;
+  }
+
+  .info-box { display: flex; gap: 40px; margin-bottom: 20px; flex-wrap: wrap; justify-content: center; }
+  .player-info { padding: 12px 22px; border-radius: 3px; font-size: clamp(11px, 1.2vw, 15px); text-align: center; line-height: 1.9; }
+  .p1 { color: #0ff; border: 1px solid rgba(0,255,255,0.6); box-shadow: 0 0 10px rgba(0,255,255,0.3), inset 0 0 10px rgba(0,255,255,0.1); }
+  .p2 { color: #f0f; border: 1px solid rgba(255,0,255,0.6); box-shadow: 0 0 10px rgba(255,0,255,0.3), inset 0 0 10px rgba(255,0,255,0.1); }
+
+  #modeSelect { margin-bottom: 20px; display: flex; gap: 16px; }
+  .modeBtn {
+    padding: 10px 28px; font-family: 'Courier New', monospace;
+    font-size: clamp(12px, 1.4vw, 17px); font-weight: bold;
+    color: #ffbf00; background: rgba(255,176,0,0.1); border: 1px solid #ffb000; cursor: pointer;
+    letter-spacing: 3px; box-shadow: 0 0 8px rgba(255,176,0,0.3);
+    transition: all 0.2s;
+  }
+  .modeBtn:hover, .modeBtn.active { background: rgba(255,176,0,0.3); box-shadow: 0 0 18px rgba(255,176,0,0.6); color: #ffe566; }
+
+  #startBtn {
+    padding: 14px 52px; font-family: 'Courier New', monospace;
+    font-size: clamp(14px, 1.8vw, 22px); font-weight: bold;
+    color: #0a0a1a; background: #39ff14; border: none; cursor: pointer;
+    letter-spacing: 4px; box-shadow: 0 0 15px #39ff14, 0 0 30px rgba(57,255,20,0.5);
+    transition: all 0.2s; margin-top: 10px;
+  }
+  #startBtn:hover { background: #fff; box-shadow: 0 0 25px #39ff14, 0 0 50px rgba(57,255,20,0.7); }
+
+  #hud {
+    position: fixed; top: 8px; left: 0; width: 100%; z-index: 15;
+    display: flex; justify-content: space-between; padding: 0 16px;
+    pointer-events: none; opacity: 0; transition: opacity 0.3s;
+  }
+  #hud.visible { opacity: 1; }
+
+  .hud-panel { padding: 5px 12px; border-radius: 3px; font-size: clamp(10px, 1.1vw, 14px); min-width: 120px; text-align: center; }
+  .hud-p1 { color: #0ff; border: 1px solid rgba(0,255,255,0.5); box-shadow: 0 0 8px rgba(0,255,255,0.3); background: rgba(0,0,10,0.75); }
+  .hud-p2 { color: #f0f; border: 1px solid rgba(255,0,255,0.5); box-shadow: 0 0 8px rgba(255,0,255,0.3); background: rgba(0,0,10,0.75); }
+  .hud-center { color: #ffbf00; border: 1px solid rgba(255,191,0,0.4); box-shadow: 0 0 8px rgba(255,176,0,0.2); background: rgba(0,0,10,0.75); }
+
+  #countdown {
+    position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%);
+    font-size: clamp(50px, 12vw, 130px); font-weight: bold; z-index: 25;
+    color: #ffbf00; text-shadow: 0 0 20px #ffbf00, 0 0 60px rgba(255,176,0,0.6);
+    pointer-events: none; display: none; animation: flicker 0.4s infinite alternate;
+  }
+
+  #gameOverInfo {
+    color: #ffbf00; font-size: clamp(12px, 1.3vw, 17px); margin-bottom: 18px; text-align: center; line-height: 2;
+    text-shadow: 0 0 6px rgba(255,176,0,0.4);
+  }
+
+
+/* Cyberpunk arcade back link */
+#arcade-back-link {
+  position: fixed;
+  top: 12px;
+  left: 12px;
+  padding: 8px 16px;
+  color: rgba(0,255,255,0.6);
+  text-decoration: none;
+  font-family: 'Courier New', monospace;
+  font-size: 12px;
+  letter-spacing: 0.15em;
+  border: 1px solid rgba(0,255,255,0.3);
+  border-radius: 3px;
+  background: rgba(0,0,20,0.7);
+  backdrop-filter: blur(4px);
+  transition: all 0.25s ease;
+  z-index: 9999;
+  pointer-events: auto;
+}
+#arcade-back-link:hover {
+  color: #0ff;
+  border-color: #0ff;
+  box-shadow: 0 0 15px rgba(0,255,255,0.3), inset 0 0 15px rgba(0,255,255,0.1);
+  background: rgba(0,255,255,0.08);
+}
+</style>
+</head>
+<body>
+<a href="arcade.html" id="arcade-back-link"><< BACK TO ARCADE</a>
+<canvas id="gameCanvas"></canvas>
+<div id="scanlines"></div>
+<div id="vignette"></div>
+
+<div id="overlay">
+  <div id="title">NEON JOUST</div>
+  <div id="subtitle">// AERIAL COMBAT PROTOCOL // 2087</div>
+  <div class="info-box">
+    <div class="player-info p1">
+      PLAYER CYAN<br>
+      ← → ↑ ↓ MOVE<br>
+      SPACE THROW
+    </div>
+    <div class="player-info p2">
+      PLAYER MAGENTA<br>
+      A D W S MOVE<br>
+      X THROW
+    </div>
+  </div>
+  <div id="modeSelect">
+    <button class="modeBtn active" data-mode="1p">1P VS AI</button>
+    <button class="modeBtn" data-mode="2p">2P LOCAL</button>
+    <button class="modeBtn" data-mode="6p">2P VS 4AI</button>
+  </div>
+  <button id="startBtn">INITIALIZE</button>
+</div>
+
+<div id="hud">
+  <div class="hud-panel hud-p1" id="hudP1">CYAN: 0</div>
+  <div class="hud-panel hud-center" id="hudCenter">ROUND 1 — NEON COLISEUM</div>
+  <div class="hud-panel hud-p2" id="hudP2">MAGENTA: 0</div>
+</div>
+
+<div id="countdown"></div>
+
+<script>
+// ============================================================
+// NEON JOUST // 2087 — Cyberpunk Joust Reimagining
+// ============================================================
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+function resizeCanvas() {
+  const ratio = 800 / 500;
+  let w = window.innerWidth, h = window.innerHeight;
+  if (w / h > ratio) { canvas.height = h; canvas.width = h * ratio; }
+  else { canvas.width = w; canvas.height = w / ratio; }
+}
+resizeCanvas();
+window.addEventListener('resize', resizeCanvas);
+
+const W = 800, H = 500; // logical size
+const scale = () => canvas.width / W;
+
+// --- Colors ---
+const C_CYAN = '#0ff';
+const C_MAGENTA = '#f0f';
+const C_AMBER = '#ffbf00';
+const C_DEEP_AMBER = '#ffb000';
+const C_PEAK_AMBER = '#ffe566';
+const C_GREEN = '#39ff14';
+const C_DARK_BG = '#0a0a1a';
+
+// --- Game State ---
+let gameState = 'MENU'; // MENU, COUNTDOWN, PLAYING, KNOCKOUT, GAMEOVER
+let gameMode = '1p'; // 1p or 2p
+let currentStage = 0;
+let roundNumber = 1;
+let p1Score = 0, p2Score = 0;
+const MAX_ROUNDS = 5;
+let countdownTimer = 0;
+let knockoutTimer = 0;
+let stageNames = ['NEON COLISEUM', 'DATA TOWER', 'GRID WARFARE', 'CORP RUINS'];
+
+// --- Input ---
+const keys = {};
+window.addEventListener('keydown', e => { keys[e.code] = true; if(['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault(); });
+window.addEventListener('keyup', e => { keys[e.code] = false; });
+
+// --- Particles ---
+let particles = [];
+class Particle {
+  constructor(x, y, vx, vy, color, life, size) {
+    this.x = x; this.y = y; this.vx = vx; this.vy = vy;
+    this.color = color; this.life = life; this.maxLife = life;
+    this.size = size || 3;
+  }
+  update(dt) {
+    this.x += this.vx * dt; this.y += this.vy * dt;
+    this.vy += 80 * dt; // slight gravity on particles
+    this.life -= dt;
+  }
+  draw(ctx) {
+    const a = Math.max(0, this.life / this.maxLife);
+    ctx.globalAlpha = a;
+    ctx.fillStyle = this.color;
+    ctx.shadowColor = this.color;
+    ctx.shadowBlur = 8;
+    const s = this.size * a;
+    ctx.fillRect(this.x - s/2, this.y - s/2, s, s);
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+  }
+}
+
+function spawnExplosion(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    const angle = Math.random() * Math.PI * 2;
+    const speed = 60 + Math.random() * 200;
+    particles.push(new Particle(x, y, Math.cos(angle)*speed, Math.sin(angle)*speed, color, 0.4 + Math.random()*0.5, 2+Math.random()*4));
+  }
+}
+
+function spawnTrail(x, y, color) {
+  particles.push(new Particle(x + (Math.random()-0.5)*10, y + (Math.random()-0.5)*8, (Math.random()-0.5)*15, (Math.random()-0.5)*15, color, 0.2+Math.random()*0.2, 1.5));
+}
+
+// --- Background particles ---
+let bgParticles = [];
+function initBgParticles() {
+  bgParticles = [];
+  for (let i = 0; i < 60; i++) {
+    bgParticles.push({
+      x: Math.random()*W, y: Math.random()*H,
+      vx: (Math.random()-0.5)*12, vy: -Math.random()*18-5,
+      size: 0.5+Math.random()*1.5, alpha: 0.15+Math.random()*0.25,
+      color: [C_CYAN,C_MAGENTA,C_AMBER,'#08f'][Math.floor(Math.random()*4)]
+    });
+  }
+}
+initBgParticles();
+
+function updateBgParticles(dt) {
+  for (const p of bgParticles) {
+    p.x += p.vx * dt; p.y += p.vy * dt;
+    if (p.y < -10) { p.y = H+10; p.x = Math.random()*W; }
+    if (p.x < -10) p.x = W+10;
+    if (p.x > W+10) p.x = -10;
+  }
+}
+
+function drawBgParticles(ctx) {
+  for (const p of bgParticles) {
+    ctx.globalAlpha = p.alpha;
+    ctx.fillStyle = p.color;
+    ctx.fillRect(p.x, p.y, p.size, p.size);
+  }
+  ctx.globalAlpha = 1;
+}
+
+// --- Platform ---
+class Platform {
+  constructor(x, y, w, h, type) {
+    this.x = x; this.y = y; this.w = w; this.h = h || 14;
+    this.type = type || 'solid'; // solid, crumbling
+    this.tiltAngle = 0; // -1 to 1
+    this.crumbleTimer = 0;
+    this.visible = true;
+    this.reformTimer = 0;
+    this.glowPulse = Math.random() * Math.PI * 2;
+  }
+
+  update(dt, riders) {
+    this.glowPulse += dt * 3;
+
+    if (this.type === 'crumbling') {
+      if (!this.visible) {
+        this.reformTimer -= dt;
+        if (this.reformTimer <= 0) { this.visible = true; this.crumbleTimer = 0; }
+        return;
+      }
+      if (this.crumbleTimer > 0) {
+        this.crumbleTimer -= dt;
+        if (this.crumbleTimer <= 0) {
+          this.visible = false;
+          this.reformTimer = 3.5; // reappear after 3.5s
+          // push riders off
+          for (const r of riders) {
+            if (r.onPlatform === this) {
+              r.onPlatform = null;
+              r.vy = -100; // small upward push so they don't fall through
+            }
+          }
+        }
+      }
+    }
+
+    // Tilt based on rider positions (SEE-SAW mechanics — core Joust physics)
+    let leftTorque = 0, rightTorque = 0;
+    for (const r of riders) {
+      if (r.onPlatform === this && this.visible) {
+        const relX = r.x - (this.x + this.w/2);
+        if (relX < 0) leftTorque += 1;
+        else rightTorque += 1;
+      }
+    }
+    const targetTilt = (rightTorque - leftTorque) / Math.max(0.5, leftTorque + rightTorque);
+    this.tiltAngle += (targetTilt - this.tiltAngle) * dt * 6;
+  }
+
+  draw(ctx) {
+    if (!this.visible) return;
+
+    const cx = this.x + this.w/2;
+    const cy = this.y;
+    const tiltRad = this.tiltAngle * 0.12; // max ~8 degrees visual
+    const glowIntensity = 0.6 + Math.sin(this.glowPulse)*0.2;
+
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(tiltRad);
+
+    // Main platform body
+    const grad = ctx.createLinearGradient(-this.w/2, 0, this.w/2, this.h);
+    grad.addColorStop(0, `rgba(255,176,0,${0.08 * glowIntensity})`);
+    grad.addColorStop(1, `rgba(255,140,0,${0.04 * glowIntensity})`);
+    ctx.fillStyle = grad;
+    ctx.fillRect(-this.w/2, 0, this.w, this.h);
+
+    // Top border (bright)
+    ctx.strokeStyle = C_AMBER;
+    ctx.lineWidth = 2;
+    ctx.shadowColor = C_AMBER;
+    ctx.shadowBlur = 8 + glowIntensity * 6;
+    ctx.beginPath();
+    ctx.moveTo(-this.w/2, 0);
+    ctx.lineTo(this.w/2, 0);
+    ctx.stroke();
+
+    // Bottom border (dimmer)
+    ctx.strokeStyle = `rgba(255,176,0,${0.3 * glowIntensity})`;
+    ctx.lineWidth = 1;
+    ctx.shadowBlur = 4;
+    ctx.beginPath();
+    ctx.moveTo(-this.w/2, this.h);
+    ctx.lineTo(this.w/2, this.h);
+    ctx.stroke();
+
+    // Side borders
+    ctx.strokeStyle = `rgba(255,176,0,${0.2 * glowIntensity})`;
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(-this.w/2, 0); ctx.lineTo(-this.w/2, this.h);
+    ctx.moveTo(this.w/2, 0); ctx.lineTo(this.w/2, this.h);
+    ctx.stroke();
+
+    // Angular detail lines
+    ctx.strokeStyle = `rgba(255,176,0,${0.1 * glowIntensity})`;
+    ctx.lineWidth = 0.5;
+    for (let i = 1; i < 4; i++) {
+      const lx = -this.w/2 + (this.w/4) * i;
+      ctx.beginPath(); ctx.moveTo(lx, 2); ctx.lineTo(lx, this.h-2); ctx.stroke();
+    }
+
+    // Crumbling warning
+    if (this.type === 'crumbling' && this.crumbleTimer > 0 && this.visible) {
+      const flash = Math.sin(this.crumbleTimer * 20) > 0;
+      if (flash) {
+        ctx.fillStyle = `rgba(255,176,0,${0.15 + Math.sin(this.crumbleTimer*30)*0.1})`;
+        ctx.fillRect(-this.w/2, 0, this.w, this.h);
+      }
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+}
+
+// --- Draw Scale Factor — visual scaling only, physics stays at 1:1 ---
+const DRAW_SCALE = 0.4; // Small, compact cyberpunk sprites
+
+// --- Player / Rider ---
+class Rider {
+  constructor(x, y, color, playerNum, isAI = false) {
+    this.startX = x; this.startY = y;
+    this.x = x; this.y = y;
+    this.vx = 0; this.vy = 0;
+    this.color = color;
+    this.playerNum = playerNum; // 1 or 2
+    this.isAI = isAI;
+    this.facing = playerNum === 1 ? 1 : -1; // 1=right, -1=left
+    this.targetFacing = this.facing;
+    this.retroPedaling = false;
+    this.retroTimer = 0;
+    this.alive = true;
+    this.onPlatform = null;
+    this.wingAngle = 0;
+    this.wingSpeed = 0;
+    this.trailTimer = 0;
+    this.knockoutVy = 0;
+    this.orbHeld = false;
+    this.invincible = 0; // brief spawn invincibility
+  }
+
+  reset(x, y) {
+    this.x = x || this.startX;
+    this.y = y || this.startY;
+    this.vx = 0; this.vy = 0;
+    this.facing = this.playerNum === 1 ? 1 : -1;
+    this.targetFacing = this.facing;
+    this.retroPedaling = false;
+    this.retroTimer = 0;
+    this.alive = true;
+    this.onPlatform = null;
+    this.orbHeld = false;
+    this.invincible = 1.5; // 1.5s spawn invincibility
+  }
+
+  get input() {
+    if (this.isAI) {
+      // AI input from controller
+      return {
+        left: this._aiLeft || false,
+        right: this._aiRight || false,
+        up: this._aiUp || false,
+        down: this._aiDown || false,
+        throw: this._aiThrow || false
+      };
+    }
+    if (this.playerNum === 1) {
+      return {
+        left: keys['ArrowLeft'], right: keys['ArrowRight'],
+        up: keys['ArrowUp'], down: keys['ArrowDown'],
+        throw: keys['Space']
+      };
+    } else {
+      return {
+        left: keys['KeyA'], right: keys['KeyD'],
+        up: keys['KeyW'], down: keys['KeyS'],
+        throw: keys['KeyX']
+      };
+    }
+  }
+
+  update(dt, platforms, orb) {
+    if (!this.alive) return;
+
+    if (this.invincible > 0) this.invincible -= dt;
+
+    const inp = this.input;
+
+    // --- Apply sprite scale to movement speeds ---
+    // --- Tilt / facing logic (the heart of Joust physics) ---
+    if (inp.right) this.targetFacing = 1;
+    if (inp.left) this.targetFacing = -1;
+
+    // Check for retro-pedal: trying to reverse direction
+    if (this.targetFacing !== this.facing && !this.retroPedaling) {
+      this.retroPedaling = true;
+      this.retroTimer = 0.25; // 250ms vulnerability window
+    }
+
+    if (this.retroPedaling) {
+      this.retroTimer -= dt;
+      if (this.retroTimer <= 0) {
+        this.facing = this.targetFacing;
+        this.retroPedaling = false;
+      }
+    } else if (!inp.left && !inp.right) {
+      // No input, keep current facing
+    }
+
+    // --- Horizontal acceleration with inertia ---
+    const H_ACCEL = 400;
+    const H_FRICTION = 2.5;
+    const MAX_H_SPEED = 220;
+
+    if (inp.right) this.vx += H_ACCEL * dt;
+    if (inp.left) this.vx -= H_ACCEL * dt;
+
+    // Apply friction when no input
+    if (!inp.left && !inp.right) {
+      if (this.vx > 0) this.vx = Math.max(0, this.vx - H_FRICTION * 60 * dt);
+      else if (this.vx < 0) this.vx = Math.min(0, this.vx + H_FRICTION * 60 * dt);
+    }
+
+    // Clamp horizontal speed
+    this.vx = Math.max(-MAX_H_SPEED, Math.min(MAX_H_SPEED, this.vx));
+
+    // --- Vertical control ---
+    const V_ACCEL = 300;
+    const MAX_V_SPEED = 140;
+    const BUOYANCY = -40; // slight constant upward float
+
+    if (inp.up) this.vy -= V_ACCEL * dt;
+    if (inp.down) this.vy += V_ACCEL * dt;
+
+    this.vy += BUOYANCY * dt; // constant buoyancy
+    this.vy *= 0.98; // slight drag
+
+    this.vy = Math.max(-MAX_V_SPEED, Math.min(MAX_V_SPEED, this.vy));
+
+    // --- Apply velocity ---
+    this.x += this.vx * dt;
+    this.y += this.vy * dt;
+
+    // --- Screen wrap (classic Joust style — pop to opposite side) ---
+    if (this.x < -25)  this.x = W + 20;
+    if (this.x > W + 25) this.x = -20;
+    if (this.y < 10) { this.y = 10; this.vy = Math.abs(this.vy)*0.3; }
+    if (this.y > H - 35) { this.y = H - 35; this.vy = -Math.abs(this.vy)*0.3; }
+
+    // --- Platform collision ---
+    let onAnyPlatform = false;
+    for (const plat of platforms) {
+      if (!plat.visible) continue;
+      // Simple AABB: check if rider bottom is near platform top
+      const rBottom = this.y + 12;
+      const rTop = this.y - 12;
+      const pLeft = plat.x;
+      const pRight = plat.x + plat.w;
+
+      if (this.x > pLeft - 8 && this.x < pRight + 8) {
+        // Landing on top
+        if (rBottom >= plat.y && rBottom <= plat.y + plat.h + 10 && this.vy >= 0) {
+          this.y = plat.y - 12;
+          this.vy = 0;
+          this.onPlatform = plat;
+          onAnyPlatform = true;
+
+          // Trigger crumbling
+          if (plat.type === 'crumbling' && plat.crumbleTimer === 0) {
+            plat.crumbleTimer = 1.5; // crumble after 1.5s
+          }
+        }
+        // Sitting on platform, check if still over it
+        else if (this.onPlatform === plat && rBottom <= plat.y + 5) {
+          this.vy = 0;
+          this.y = plat.y - 12;
+          onAnyPlatform = true;
+        }
+      }
+    }
+
+    if (!onAnyPlatform) {
+      this.onPlatform = null;
+    }
+
+    // --- Apply tilt gravity when on a tilted platform ---
+    if (this.onPlatform && this.onPlatform.visible) {
+      const tiltRad = this.onPlatform.tiltAngle * 0.12; // max ~0.24 rad ≈ 14°
+      const slideSpeed = tiltRad * 280; // convert angle to horizontal speed
+      // Slide toward lower side
+      this.vx += slideSpeed * dt * 3; // enhanced response
+      // Slight vertical component — tilted side pulls you down
+      if (this.onPlatform.tiltAngle > 0.15) {
+        this.vy += 60 * dt; // tilt right → slide down
+      } else if (this.onPlatform.tiltAngle < -0.15) {
+        this.vy += 60 * dt; // tilt left → slide down
+      }
+    }
+
+    // --- Wing animation ---
+    const hasInput = inp.up || inp.down || inp.left || inp.right;
+    this.wingSpeed = hasInput ? 12 : 4;
+    this.wingAngle += this.wingSpeed * dt;
+
+    // --- Trail particles ---
+    this.trailTimer -= dt;
+    if (this.trailTimer <= 0 && (Math.abs(this.vx) > 30 || Math.abs(this.vy) > 30)) {
+      spawnTrail(
+        this.x - this.facing * 15,
+        this.y + (Math.random()-0.5)*8,
+        this.color
+      );
+      this.trailTimer = 0.04;
+    }
+
+    // --- Orb pickup ---
+    if (orb && orb.active && !orb.cycloned && !this.orbHeld) {
+      const dx = this.x - orb.x, dy = this.y - orb.y;
+      if (Math.sqrt(dx*dx+dy*dy) < 28) {
+        this.orbHeld = true;
+        orb.active = false; // picked up, player carries it
+      }
+    }
+
+    // --- Throw orb ---
+    if (inp.throw && this.orbHeld) {
+      this.orbHeld = false;
+      orb.reset(this.x + this.facing * 20, this.y);
+      orb.cycloned = true;
+      orb.vx = this.facing * 350;
+      orb.vy = -30;
+    }
+  }
+
+  draw(ctx) {
+    if (!alive_check(this)) return;
+
+    const f = this.facing;
+    const retro = this.retroPedaling;
+    const wingFlap = Math.sin(this.wingAngle);
+    const t = Date.now() / 600; // ambient animation timer
+
+    ctx.save();
+    ctx.translate(this.x, this.y);
+    ctx.scale(DRAW_SCALE, DRAW_SCALE);
+
+    // Invincibility flash
+    let alphaMod = 1;
+    if (this.invincible > 0 && Math.floor(this.invincible * 10) % 2 === 0) {
+      alphaMod = 0.3;
+    }
+
+    ctx.globalAlpha = alphaMod;
+
+    const baseColor = retro ? C_PEAK_AMBER : this.color;
+    const dimRGB = retro ? '255,229,102' : (this.playerNum === 1 ? '0,255,255' : '255,0,255');
+    const rgba = (a) => `rgba(${dimRGB},${a})`;
+
+    ctx.shadowColor = baseColor;
+    ctx.shadowBlur = 14;
+
+    // ============================================================
+    // TAIL — triple chevron at rear
+    // ============================================================
+    const tailX = -f * 16;
+    const wingFlapS = wingFlap * 5;
+    ctx.strokeStyle = rgba(0.6);
+    ctx.lineWidth = 1.5;
+    ctx.shadowBlur = 5;
+
+    for (let i = 0; i < 3; i++) {
+      const spread = (i - 1) * (7 + wingFlapS * 0.4);
+      const tipX = tailX - f * (6 + i*2);
+      ctx.beginPath();
+      ctx.moveTo(tailX, spread);
+      ctx.lineTo(tipX, spread + (i===1 ? 0 : (i-1)*5));
+      ctx.stroke();
+    }
+
+    // ============================================================
+    // WINGS — filled angular triangles with flap animation
+    // ============================================================
+    const wFlap = wingFlap * 10;
+
+    // Upper wing
+    ctx.fillStyle = rgba(0.12);
+    ctx.strokeStyle = baseColor;
+    ctx.lineWidth = 1.8;
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.moveTo(f * 2, -8);
+    ctx.lineTo(f * 14, -26 + wFlap);
+    ctx.lineTo(f * 26, -16 + wFlap * 0.6);
+    ctx.lineTo(f * 8, -7);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+
+    // Upper wing strut
+    ctx.lineWidth = 0.8;
+    ctx.strokeStyle = rgba(0.4);
+    ctx.beginPath();
+    ctx.moveTo(f * 5, -9);
+    ctx.lineTo(f * 16, -22 + wFlap * 0.8);
+    ctx.stroke();
+
+    // Lower wing (mirror)
+    ctx.fillStyle = rgba(0.12);
+    ctx.strokeStyle = baseColor;
+    ctx.lineWidth = 1.8;
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.moveTo(f * 2, 8);
+    ctx.lineTo(f * 14, 26 - wFlap);
+    ctx.lineTo(f * 26, 16 - wFlap * 0.6);
+    ctx.lineTo(f * 8, 7);
+    ctx.closePath();
+    ctx.fill(); ctx.stroke();
+
+    // Lower wing strut
+    ctx.lineWidth = 0.8;
+    ctx.strokeStyle = rgba(0.4);
+    ctx.beginPath();
+    ctx.moveTo(f * 5, 9);
+    ctx.lineTo(f * 16, 22 - wFlap * 0.8);
+    ctx.stroke();
+
+    // ============================================================
+    // BODY — sleek angular hull (not a diamond, more like a craft)
+    // ============================================================
+    ctx.shadowColor = baseColor;
+    ctx.shadowBlur = 12;
+
+    // Hull fill
+    ctx.fillStyle = rgba(0.35);
+    ctx.strokeStyle = baseColor;
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(f * 26, 0);           // beak tip
+    ctx.lineTo(f * 18, -5);          // upper nose
+    ctx.lineTo(f * 6, -9);           // upper body
+    ctx.lineTo(-f * 6, -10);         // rear-upper
+    ctx.lineTo(-f * 14, -7);         // tail-fin top
+    ctx.lineTo(-f * 16, -2);         // tail tip upper
+    ctx.lineTo(-f * 16, 2);          // tail tip lower
+    ctx.lineTo(-f * 14, 7);          // tail-fin bottom
+    ctx.lineTo(-f * 6, 10);          // rear-lower
+    ctx.lineTo(f * 6, 9);            // lower body
+    ctx.lineTo(f * 18, 5);           // lower nose
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Internal panel lines (angular detail)
+    ctx.lineWidth = 0.7;
+    ctx.strokeStyle = rgba(0.35);
+    ctx.shadowBlur = 0;
+
+    // Center spine
+    ctx.beginPath();
+    ctx.moveTo(f * 24, 0);
+    ctx.lineTo(-f * 14, 0);
+    ctx.stroke();
+
+    // Cross panel
+    ctx.beginPath();
+    ctx.moveTo(f * 6, -9);
+    ctx.lineTo(f * 6, 9);
+    ctx.stroke();
+
+    ctx.beginPath();
+    ctx.moveTo(-f * 6, -10);
+    ctx.lineTo(-f * 6, 10);
+    ctx.stroke();
+
+    // ============================================================
+    // COCKPIT — glowing triangle, clearly shows direction
+    // ============================================================
+    const cockpitPulse = 0.7 + Math.sin(t * 2) * 0.3;
+    ctx.shadowColor = '#fff';
+    ctx.shadowBlur = 8;
+    ctx.fillStyle = `rgba(255,255,255,${cockpitPulse * 0.9})`;
+    ctx.beginPath();
+    ctx.moveTo(f * 16, 0);           // cockpit nose
+    ctx.lineTo(f * 10, -4);          // cockpit upper
+    ctx.lineTo(f * 8, -2);           // cockpit back upper
+    ctx.lineTo(f * 8, 2);            // cockpit back lower
+    ctx.lineTo(f * 10, 4);           // cockpit lower
+    ctx.closePath();
+    ctx.fill();
+
+    // ============================================================
+    // BEAK — bright neon spike (primary directional indicator)
+    // ============================================================
+    const beakGlow = 0.6 + Math.sin(t * 3) * 0.4;
+    ctx.shadowColor = baseColor;
+    ctx.shadowBlur = 16;
+
+    // Outer beak
+    ctx.fillStyle = baseColor;
+    ctx.beginPath();
+    ctx.moveTo(f * 32, 0);           // absolute tip
+    ctx.lineTo(f * 26, -3);          // upper junction
+    ctx.lineTo(f * 25, -1.5);
+    ctx.lineTo(f * 25, 1.5);
+    ctx.lineTo(f * 26, 3);           // lower junction
+    ctx.closePath();
+    ctx.fill();
+
+    // Beak tip glow
+    ctx.fillStyle = `rgba(255,255,255,${beakGlow * 0.8})`;
+    ctx.shadowColor = '#fff';
+    ctx.shadowBlur = 10;
+    ctx.beginPath();
+    ctx.arc(f * 30, 0, 1.5, 0, Math.PI * 2);
+    ctx.fill();
+
+    // ============================================================
+    // RETRO-PEDAL INDICATOR — amber warning arcs
+    // ============================================================
+    if (retro) {
+      const retroFlash = Math.sin(Date.now() / 80) > 0;
+      if (retroFlash) {
+        ctx.strokeStyle = `rgba(255,229,102,${0.5 + Math.sin(Date.now()/60)*0.3})`;
+        ctx.lineWidth = 1.5;
+        ctx.shadowColor = C_PEAK_AMBER;
+        ctx.shadowBlur = 12;
+        // Warning arcs above and below
+        ctx.beginPath();
+        ctx.arc(f * 8, 0, 18, -0.8, 0.8);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(f * 8, 0, 18, Math.PI - 0.8, Math.PI + 0.8);
+        ctx.stroke();
+      }
+    }
+
+    // ============================================================
+    // THRUSTER — subtle trail particles from rear
+    // ============================================================
+    const hasInput = this.input.up || this.input.down || this.input.left || this.input.right;
+    if (hasInput) {
+      ctx.fillStyle = rgba(0.2 + Math.random()*0.15);
+      ctx.shadowBlur = 0;
+      for (let i = 0; i < 2; i++) {
+        const tx = -f * (18 + Math.random() * 8);
+        const ty = (Math.random() - 0.5) * 6;
+        ctx.fillRect(tx, ty, f * (2+Math.random()*3), 1);
+      }
+    }
+
+    // ============================================================
+    // HELD ORB — data orb orbiting the beak area
+    // ============================================================
+    if (this.orbHeld) {
+      const orbAngle = t * 3;
+      const orbR = 12;
+      const orbX = f * 20 + Math.cos(orbAngle) * orbR * 0.4;
+      const orbY = Math.sin(orbAngle) * orbR * 0.6;
+
+      ctx.fillStyle = C_GREEN;
+      ctx.shadowColor = C_GREEN;
+      ctx.shadowBlur = 14;
+      ctx.beginPath();
+      ctx.arc(orbX, orbY, 3.5, 0, Math.PI*2);
+      ctx.fill();
+
+      // Orbit ring
+      ctx.strokeStyle = `rgba(57,255,20,${0.3 + Math.sin(t*4)*0.2})`;
+      ctx.lineWidth = 0.8;
+      ctx.shadowBlur = 6;
+      ctx.beginPath();
+      ctx.ellipse(f * 20, 0, orbR * 0.5, orbR * 0.7, t, 0, Math.PI*2);
+      ctx.stroke();
+    }
+
+    ctx.globalAlpha = 1;
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+
+  getBeakPos() {
+    return { x: this.x + this.facing * 30 * DRAW_SCALE, y: this.y };
+  }
+
+  getBodyBounds() {
+    return { x: this.x - 14*DRAW_SCALE, y: this.y - 10*DRAW_SCALE, w: 28*DRAW_SCALE, h: 20*DRAW_SCALE };
+  }
+}
+
+function alive_check(r) {
+  return r.alive;
+}
+
+// --- DATA ORB ---
+class Orb {
+  constructor() {
+    this.active = false;
+    this.cycloned = false;
+    this.x = 0; this.y = 0;
+    this.vx = 0; this.vy = 0;
+    this.spawnTimer = 8 + Math.random()*5; // first spawn 8-13 seconds in
+    this.pulseAngle = 0;
+  }
+
+  reset(x, y) {
+    this.x = x; this.y = y;
+    this.active = true;
+  }
+
+  update(dt, riders) {
+    this.pulseAngle += dt * 5;
+
+    if (this.cycloned) {
+      this.x += this.vx * dt;
+      this.y += this.vy * dt;
+
+      // Check collision with riders
+      for (const r of riders) {
+        if (!r.alive || r.invincible > 0) continue;
+        const dx = this.x - r.x, dy = this.y - r.y;
+        if (Math.sqrt(dx*dx+dy*dy) < 22) {
+          // Hit!
+          knockoutRider(r);
+          this.cycloned = false;
+          this.active = false;
+          this.spawnTimer = 10 + Math.random()*8;
+          return;
+        }
+      }
+
+      // Off screen
+      if (this.x < -30 || this.x > W+30 || this.y < -30 || this.y > H+30) {
+        this.cycloned = false;
+        this.active = false;
+        this.spawnTimer = 10 + Math.random()*8;
+      }
+    } else if (!this.active && !riders.find(r => r.orbHeld)) {
+      // Spawn timer
+      this.spawnTimer -= dt;
+      if (this.spawnTimer <= 0) {
+        // Spawn at random position
+        this.x = 100 + Math.random() * (W-200);
+        this.y = 80 + Math.random() * (H-200);
+        this.active = true;
+        this.cycloned = false;
+      }
+    }
+  }
+
+  draw(ctx) {
+    if (!this.active || this.cycloned === false && !this.active) return;
+
+    const pulse = 0.6 + Math.sin(this.pulseAngle)*0.4;
+    ctx.save();
+    ctx.translate(this.x, this.y);
+
+    // Outer glow ring
+    ctx.strokeStyle = `rgba(57,255,20,${pulse * 0.6})`;
+    ctx.lineWidth = 1.5;
+    ctx.shadowColor = C_GREEN;
+    ctx.shadowBlur = 16;
+    ctx.beginPath();
+    ctx.arc(0, 0, 8 + pulse*3, 0, Math.PI*2);
+    ctx.stroke();
+
+    // Inner core
+    ctx.fillStyle = this.cycloned ? '#fff' : C_GREEN;
+    ctx.shadowBlur = 12;
+    ctx.beginPath();
+    ctx.arc(0, 0, 4 + pulse*2, 0, Math.PI*2);
+    ctx.fill();
+
+    // Orbiting data particles
+    for (let i = 0; i < 3; i++) {
+      const a = this.pulseAngle * 2 + (Math.PI*2/3)*i;
+      const r = 10 + Math.sin(this.pulseAngle+i)*2;
+      ctx.fillStyle = `rgba(57,255,20,${0.4*pulse})`;
+      ctx.fillRect(Math.cos(a)*r - 1, Math.sin(a)*r - 1, 2, 2);
+    }
+
+    if (this.cycloned) {
+      // Spin trail
+      ctx.strokeStyle = `rgba(57,255,20,${0.3*pulse})`;
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.arc(0, 0, 14, this.pulseAngle*3, this.pulseAngle*3 + Math.PI*1.5);
+      ctx.stroke();
+    }
+
+    ctx.shadowBlur = 0;
+    ctx.restore();
+  }
+}
+
+// --- Stage definitions ---
+function createStages() {
+  return [
+    // Stage 1: NEON COLISEUM — symmetric classic layout
+    [
+      new Platform(280, 130, 240),
+      new Platform(120, 210, 180),
+      new Platform(500, 210, 180),
+      new Platform(280, 300, 240),
+      new Platform(160, 400, 200),
+      new Platform(440, 400, 200),
+    ],
+    // Stage 2: DATA TOWER — vertical stacking, narrow
+    [
+      new Platform(300, 90, 200),
+      new Platform(180, 170, 160),
+      new Platform(460, 170, 160),
+      new Platform(300, 260, 200, 14, 'crumbling'),
+      new Platform(150, 350, 140),
+      new Platform(510, 350, 140),
+      new Platform(300, 430, 200),
+    ],
+    // Stage 3: GRID WARFARE — wide gaps, few safe zones
+    [
+      new Platform(320, 120, 160),
+      new Platform(80, 220, 130),
+      new Platform(590, 220, 130),
+      new Platform(320, 310, 160, 14, 'crumbling'),
+      new Platform(100, 420, 140),
+      new Platform(560, 420, 140),
+    ],
+    // Stage 4: CORP RUINS — asymmetric, crumbling heavy
+    [
+      new Platform(350, 100, 180),
+      new Platform(100, 200, 140, 14, 'crumbling'),
+      new Platform(560, 180, 140, 14, 'crumbling'),
+      new Platform(350, 290, 120),
+      new Platform(80, 370, 120, 14, 'crumbling'),
+      new Platform(600, 350, 120),
+      new Platform(350, 440, 180, 14, 'crumbling'),
+    ],
+  ];
+}
+
+let stages = [];
+let currentPlatforms = [];
+let rider1, rider2;
+let aiRiders = []; // AI riders for 6p mode
+let allRiders = []; // [rider1, rider2, ...aiRiders] for 6p mode
+let orb;
+
+// --- AI Rider Color Palette ---
+const AI_COLORS = ['#ff4444', '#44ff44', '#ffff44', '#ff8844']; // Red, Green, Yellow, Orange
+const AI_NAMES = ['RED', 'LIME', 'YELLOW', 'AMBER'];
+
+// --- AI Controller for single-target AI (1p mode) ---
+class AI {
+  constructor() {
+    this.targetX = W/2;
+    this.targetY = H/2;
+    this.reactionTimer = 0;
+    this.actionDelay = 0.3;
+    this.state = 'patrol';
+    this.patrolPlatforms = [];
+    this.patrolIdx = 0;
+  }
+
+  update(dt, aiRider, opponent, platforms, orbObj) {
+    if (!aiRider.alive || !opponent.alive) return;
+
+    this.reactionTimer -= dt;
+    if (this.reactionTimer > 0) return;
+    this.reactionTimer = this.actionDelay * (0.7 + Math.random()*0.3);
+
+    // Determine state
+    if (orbObj && orbObj.active && !orbObj.cycloned && !aiRider.orbHeld) {
+      const odx = orbObj.x - aiRider.x, ody = orbObj.y - aiRider.y;
+      const orDist = Math.sqrt(odx*odx+ody*ody);
+      if (orDist < 200) {
+        this.state = 'orb_chase';
+        this.targetX = orbObj.x;
+        this.targetY = orbObj.y - 20;
+      } else {
+        this.state = 'chase';
+      }
+    } else if (aiRider.orbHeld) {
+      const dx = opponent.x - aiRider.x, dy = opponent.y - aiRider.y;
+      if (Math.abs(dx) < 200 && Math.abs(dy) < 80) this.state = 'throw';
+      else this.state = 'chase';
+    } else {
+      this.state = 'chase';
+    }
+
+    switch(this.state) {
+      case 'patrol':
+        if (platforms.length > 0) {
+          this.patrolIdx = (this.patrolIdx + 1) % platforms.length;
+          const tp = platforms[this.patrolIdx];
+          this.targetX = tp.x + tp.w/2 + (Math.random()-0.5)*60;
+          this.targetY = tp.y - 30;
+        }
+        break;
+      case 'chase':
+        this.targetX = opponent.x - opponent.facing * 40;
+        this.targetY = opponent.y + (Math.random()-0.5)*60;
+        break;
+      case 'orb_chase':
+        break;
+      case 'throw':
+        if (Math.abs(opponent.x - aiRider.x) < 180 && Math.abs(opponent.y - aiRider.y) < 70) {
+          keys['KeyX'] = true;
+          setTimeout(() => { keys['KeyX'] = false; }, 50);
+          this.state = 'dodge';
+          this.reactionTimer = 0.4;
+        }
+        this.targetX = aiRider.x;
+        this.targetY = aiRider.y;
+        break;
+      case 'dodge':
+        this.targetX = aiRider.x + (Math.random()-0.5)*200;
+        this.targetY = aiRider.y + (Math.random()-0.5)*150;
+        setTimeout(() => { if(this.state==='dodge') this.state='chase'; }, 600);
+        break;
+    }
+
+    const tdx = this.targetX - aiRider.x;
+    const tdy = this.targetY - aiRider.y;
+    const threshold = 25;
+    keys['KeyA'] = false; keys['KeyD'] = false;
+    keys['KeyW'] = false; keys['KeyS'] = false;
+    if (Math.abs(tdx) > threshold) { if (tdx > 0) keys['KeyD'] = true; else keys['KeyA'] = true; }
+    if (Math.abs(tdy) > threshold) { if (tdy < 0) keys['KeyW'] = true; else keys['KeyS'] = true; }
+
+    const totalKnockouts = p1Score + p2Score;
+    this.actionDelay = Math.max(0.1, 0.35 - totalKnockouts * 0.04);
+  }
+}
+
+// --- Multi-AI Controller for 6p mode ---
+class MultiAI {
+  constructor() {
+    this.actionDelay = 0.35;
+  }
+
+  // For a given AI rider, pick target and decide inputs
+  updateAI(dt, aiRider, allRiderList, platforms, orbObj) {
+    if (!aiRider.alive) return;
+
+    // Each AI has its own timer stored on the rider object
+    if (!aiRider._aiTimer) aiRider._aiTimer = 0;
+    aiRider._aiTimer -= dt;
+    // Only reset inputs at start of new decision cycle, preserving last decisions between ticks
+    if (aiRider._aiTimer > 0) return;
+    aiRider._aiTimer = 0.1 + Math.random() * 0.15;
+
+    // Fresh decision — clear old inputs
+    aiRider._aiLeft = false; aiRider._aiRight = false;
+    aiRider._aiUp = false; aiRider._aiDown = false;
+    aiRider._aiThrow = false;
+
+    // Find nearest vulnerable rider to ram
+    let nearestTarget = null;
+    let nearestDist = Infinity;
+    for (const r of allRiderList) {
+      if (r === aiRider || !r.alive || r.invincible > 0) continue;
+      const dx = r.x - aiRider.x, dy = r.y - aiRider.y;
+      const d = Math.sqrt(dx*dx+dy*dy);
+      if (d < nearestDist) { nearestDist = d; nearestTarget = r; }
+    }
+
+    // Check orb
+    let orbTarget = null;
+    if (orbObj && orbObj.active && !orbObj.cycloned && !aiRider.orbHeld) {
+      const odx = orbObj.x - aiRider.x, ody = orbObj.y - aiRider.y;
+      if (Math.sqrt(odx*odx+ody*ody) < 200) orbTarget = orbObj;
+    }
+
+    if (aiRider.orbHeld && nearestTarget) {
+      // Try to throw at nearest target
+      const dx = nearestTarget.x - aiRider.x;
+      if (Math.abs(dx) < 250 && Math.abs(nearestTarget.y - aiRider.y) < 80) {
+        aiRider._aiThrow = true;
+        return;
+      }
+      // Move toward target
+      aiRider._aiRight = dx > 0;
+      aiRider._aiLeft = dx < 0;
+      aiRider._aiUp = Math.abs(nearestTarget.y - aiRider.y) > 40;
+      return;
+    }
+
+    if (orbTarget) {
+      const dx = orbTarget.x - aiRider.x, dy = orbTarget.y - aiRider.y;
+      aiRider._aiRight = dx > 20;
+      aiRider._aiLeft = dx < -20;
+      aiRider._aiUp = dy < -15;
+      aiRider._aiDown = dy > 15;
+      return;
+    }
+
+    // Target a rider to ram, or patrol if too far
+    if (nearestTarget && nearestDist < 300 && nearestTarget.alive) {
+      // Get behind the target (opposite to their facing)
+      const tx = nearestTarget.x - nearestTarget.facing * 50;
+      const ty = nearestTarget.y + (Math.random()-0.5)*60;
+      const tdx = tx - aiRider.x, tdy = ty - aiRider.y;
+      aiRider._aiRight = tdx > 25;
+      aiRider._aiLeft = tdx < -25;
+      aiRider._aiUp = tdy < -25;
+      aiRider._aiDown = tdy > 25;
+    } else {
+      // Patrol: pick a random platform
+      const plat = platforms[Math.floor(Math.random()*platforms.length)];
+      const tx = plat.x + plat.w/2 + (Math.random()-0.5)*80;
+      const ty = plat.y - 30;
+      const tdx = tx - aiRider.x, tdy = ty - aiRider.y;
+      aiRider._aiRight = tdx > 25;
+      aiRider._aiLeft = tdx < -25;
+      aiRider._aiUp = tdy < -25;
+      aiRider._aiDown = tdy > 25;
+    }
+  }
+}
+
+let aiController;
+let multiAI;
+
+// --- Collision Detection ---
+function checkBeakCombat(attacker, defender) {
+  if (!attacker.alive || !defender.alive) return false;
+  if (defender.invincible > 0) return false;
+
+  const beak = attacker.getBeakPos();
+  const bounds = defender.getBodyBounds();
+
+  // Check if attacker's beak is within defender's body
+  if (beak.x >= bounds.x && beak.x <= bounds.x + bounds.w &&
+      beak.y >= bounds.y && beak.y <= bounds.y + bounds.h) {
+    // Attacker must NOT be retro-pedaling to land the hit
+    if (!attacker.retroPedaling) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function knockoutRider(rider) {
+  rider.alive = false;
+  rider.knockoutVy = -150 + Math.random()*80;
+  spawnExplosion(rider.x, rider.y, rider.color, 40);
+
+  // Update scores
+  if (rider.playerNum === 1) p2Score++;
+  else p1Score++;
+
+  updateHUD();
+}
+
+// --- Drawing helpers ---
+function drawBackground(ctx) {
+  // Dark background with subtle gradient
+  const grad = ctx.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#050510');
+  grad.addColorStop(0.5, C_DARK_BG);
+  grad.addColorStop(1, '#08081a');
+  ctx.fillStyle = grad;
+  ctx.fillRect(0, 0, W, H);
+
+  // Subtle grid lines
+  ctx.strokeStyle = 'rgba(25,25,60,0.4)';
+  ctx.lineWidth = 0.5;
+  for (let x = 0; x < W; x += 50) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let y = 0; y < H; y += 50) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+
+  // Distant city silhouette
+  drawCitySilhouette(ctx);
+
+  // Floating data particles
+  drawBgParticles(ctx);
+}
+
+function drawCitySilhouette(ctx) {
+  ctx.fillStyle = 'rgba(15,15,40,0.6)';
+  const buildings = [
+    [20, H-80, 30, 80], [60, H-55, 20, 55], [90, H-75, 25, 75],
+    [130, H-45, 35, 45], [180, H-65, 22, 65], [220, H-90, 28, 90],
+    [260, H-50, 18, 50], [300, H-70, 32, 70], [350, H-40, 24, 40],
+    [400, H-85, 30, 85], [450, H-55, 20, 55], [490, H-60, 28, 60],
+    [540, H-45, 22, 45], [580, H-75, 30, 75], [630, H-50, 18, 50],
+    [670, H-65, 26, 65], [710, H-40, 35, 40], [760, H-55, 20, 55]
+  ];
+  for (const [bx, by, bw, bh] of buildings) {
+    ctx.fillRect(bx, by, bw, bh);
+    // Window lights
+    ctx.fillStyle = `rgba(255,176,0,${0.08 + Math.random()*0.04})`;
+    for (let wy = by+5; wy < by+bh-5; wy += 8) {
+      for (let wx = bx+3; wx < bx+bw-3; wx += 6) {
+        if (Math.random() > 0.5) ctx.fillRect(wx, wy, 2, 2);
+      }
+    }
+    ctx.fillStyle = 'rgba(15,15,40,0.6)';
+  }
+}
+
+function drawBorder(ctx) {
+  ctx.strokeStyle = C_DEEP_AMBER;
+  ctx.lineWidth = 2;
+  ctx.shadowColor = C_DEEP_AMBER;
+  ctx.shadowBlur = 10;
+  ctx.strokeRect(0, 0, W, H);
+  ctx.shadowBlur = 0;
+
+  // Corner accents
+  const cs = 15;
+  ctx.strokeStyle = C_PEAK_AMBER;
+  ctx.lineWidth = 2;
+  // Top-left
+  ctx.beginPath(); ctx.moveTo(0,cs); ctx.lineTo(0,0); ctx.lineTo(cs,0); ctx.stroke();
+  // Top-right
+  ctx.beginPath(); ctx.moveTo(W-cs,0); ctx.lineTo(W,0); ctx.lineTo(W,cs); ctx.stroke();
+  // Bottom-left
+  ctx.beginPath(); ctx.moveTo(0,H-cs); ctx.lineTo(0,H); ctx.lineTo(cs,H); ctx.stroke();
+  // Bottom-right
+  ctx.beginPath(); ctx.moveTo(W-cs,H); ctx.lineTo(W,H); ctx.lineTo(W,H-cs); ctx.stroke();
+}
+
+// --- HUD ---
+function updateHUD() {
+  document.getElementById('hudP1').textContent = `CYAN: ${p1Score}`;
+  document.getElementById('hudP2').textContent = `MAGENTA: ${p2Score}`;
+  document.getElementById('hudCenter').textContent = `ROUND ${roundNumber} — ${stageNames[currentStage % stageNames.length]}`;
+}
+
+// --- Game Init ---
+function initRound() {
+  currentPlatforms = stages[currentStage % stages.length].map(p =>
+    new Platform(p.x, p.y, p.w, p.h, p.type)
+  );
+
+  rider1.reset(200, 250);
+  rider2.reset(W-200, 250);
+
+  // AI riders for 6p mode
+  aiRiders = [];
+  allRiders = [rider1, rider2];
+  if (gameMode === '6p') {
+    const spawnPositions = [
+      {x: 100, y: 150}, {x: W-100, y: 150},
+      {x: 100, y: 350}, {x: W-100, y: 350}
+    ];
+    for (let i = 0; i < 4; i++) {
+      const ai = new Rider(
+        spawnPositions[i].x,
+        spawnPositions[i].y,
+        AI_COLORS[i],
+        0,
+        true
+      );
+      aiRiders.push(ai);
+      allRiders.push(ai);
+    }
+  }
+
+  orb = new Orb();
+  particles = [];
+  knockoutTimer = 0;
+}
+
+function initGame() {
+  stages = createStages();
+  p1Score = 0; p2Score = 0;
+  currentStage = 0;
+  roundNumber = 1;
+  rider1 = new Rider(200, 250, C_CYAN, 1);
+  rider2 = new Rider(W-200, 250, C_MAGENTA, 2);
+  aiController = new AI();
+  multiAI = new MultiAI();
+  aiRiders = [];
+  allRiders = [];
+  initBgParticles();
+  initRound();
+}
+
+// --- Knockout / Round Logic ---
+let lastRoundWinner = 0; // 0=none, 1=p1, 2=p2
+let roundWins = [0, 0]; // p1 wins, p2 wins
+const WINS_NEEDED = 3; // best of 5
+
+function checkRoundEnd() {
+  if (!rider1.alive || !rider2.alive) {
+    if (gameState !== 'KNOCKOUT') {
+      gameState = 'KNOCKOUT';
+      knockoutTimer = 0;
+      lastRoundWinner = rider1.alive ? 1 : (rider2.alive ? 2 : 1); // if both somehow die, p1 gets it
+
+      if (lastRoundWinner === 1) roundWins[0]++;
+      else roundWins[1]++;
+    }
+  }
+}
+
+function processRoundEnd(dt) {
+  knockoutTimer += dt;
+
+  // Animate knocked-out rider flying off screen
+  if (!rider1.alive) {
+    rider1.y += rider1.knockoutVy * dt;
+    rider1.x += rider1.facing * -200 * dt;
+  }
+  if (!rider2.alive) {
+    rider2.y += rider2.knockoutVy * dt;
+    rider2.x += rider2.facing * -200 * dt;
+  }
+
+  if (knockoutTimer > 2.5) {
+    // Check match end
+    if (roundWins[0] >= WINS_NEEDED || roundWins[1] >= WINS_NEEDED || roundNumber >= MAX_ROUNDS) {
+      gameState = 'GAMEOVER';
+      showGameOver();
+    } else {
+      // Next round
+      roundNumber++;
+      currentStage = (currentStage + 1) % stages.length;
+      startCountdown();
+    }
+  }
+}
+
+function startCountdown() {
+  gameState = 'COUNTDOWN';
+  countdownTimer = 0;
+  initRound();
+  updateHUD();
+
+  const el = document.getElementById('countdown');
+  el.style.display = 'block';
+}
+
+let countdownState = { phase: 0, started: false };
+
+function updateCountdown(dt) {
+  countdownTimer += dt;
+  const el = document.getElementById('countdown');
+
+  if (countdownTimer < 1) {
+    el.textContent = '3';
+    el.style.color = C_CYAN;
+  } else if (countdownTimer < 2) {
+    el.textContent = '2';
+    el.style.color = C_AMBER;
+  } else if (countdownTimer < 3) {
+    el.textContent = '1';
+    el.style.color = C_MAGENTA;
+  } else if (countdownTimer < 3.5) {
+    el.textContent = 'FIGHT!';
+    el.style.color = C_GREEN;
+    el.style.fontSize = 'clamp(30px, 8vw, 90px)';
+  } else {
+    el.style.display = 'none';
+    el.style.fontSize = ''; // reset
+    gameState = 'PLAYING';
+  }
+}
+
+function showGameOver() {
+  const overlay = document.getElementById('overlay');
+  overlay.classList.remove('hidden');
+  document.getElementById('title').textContent = roundWins[0] > roundWins[1] ? 'CYAN WINS' : 'MAGENTA WINS';
+  document.getElementById('subtitle').textContent = `FINAL SCORE — CYAN ${p1Score} // MAGENTA ${p2Score}`;
+
+  const info = document.createElement('div');
+  info.id = 'gameOverInfo';
+  info.innerHTML = `ROUNDS: ${roundWins[0]} — ${roundWins[1]}<br>BEST OF ${MAX_ROUNDS}`;
+  overlay.querySelector('.info-box').after(info);
+
+  document.getElementById('startBtn').textContent = 'REMATCH';
+
+  // Remove old gameOverInfo if exists
+  const old = document.getElementById('gameOverInfo');
+  if (old) old.remove();
+}
+
+// --- Main Game Loop ---
+let lastTime = 0;
+
+function gameLoop(timestamp) {
+  const dt = Math.min((timestamp - lastTime) / 1000, 0.05); // cap at 50ms
+  lastTime = timestamp;
+
+  update(dt);
+  render();
+
+  requestAnimationFrame(gameLoop);
+}
+
+function update(dt) {
+  updateBgParticles(dt);
+
+  // Update particles
+  particles = particles.filter(p => p.life > 0);
+  for (const p of particles) p.update(dt);
+
+  switch(gameState) {
+    case 'COUNTDOWN':
+      updateCountdown(dt);
+      break;
+
+    case 'PLAYING':
+      // Determine active rider list
+      const activeRiders = gameMode === '6p' ? allRiders : [rider1, rider2];
+
+      // AI updates
+      if (gameMode === '1p') {
+        aiController.update(dt, rider2, rider1, currentPlatforms, orb);
+      } else if (gameMode === '6p') {
+        for (const ai of aiRiders) {
+          multiAI.updateAI(dt, ai, allRiders, currentPlatforms, orb);
+        }
+      }
+
+      // Update platforms
+      for (const plat of currentPlatforms) plat.update(dt, activeRiders);
+
+      // Update riders
+      for (const r of activeRiders) r.update(dt, currentPlatforms, orb);
+
+      // Update orb
+      orb.update(dt, activeRiders);
+
+      // Check combat collisions
+      let combatCount = 0;
+      if (gameMode === '6p') {
+        // Check all pairs
+        for (let i = 0; i < activeRiders.length && combatCount < 2; i++) {
+          for (let j = i+1; j < activeRiders.length && combatCount < 2; j++) {
+            const a = activeRiders[i], b = activeRiders[j];
+            if (!a.alive || !b.alive || a.invincible > 0 || b.invincible > 0) continue;
+            const aHits = checkBeakCombat(a, b);
+            const bHits = checkBeakCombat(b, a);
+            if (aHits && !bHits) {
+              knockoutRider(b);
+              spawnExplosion(b.x, b.y, b.color, 50);
+              combatCount++;
+            } else if (bHits && !aHits) {
+              knockoutRider(a);
+              spawnExplosion(a.x, a.y, a.color, 50);
+              combatCount++;
+            } else if (aHits && bHits) {
+              // Head-on: retro-pedal decides
+              if (!a.retroPedaling && b.retroPedaling) {
+                knockoutRider(b); spawnExplosion(b.x, b.y, b.color, 50);
+              } else if (!b.retroPedaling && a.retroPedaling) {
+                knockoutRider(a); spawnExplosion(a.x, a.y, a.color, 50);
+              } else {
+                const loser = Math.random() > 0.5 ? a : b;
+                knockoutRider(loser); spawnExplosion(loser.x, loser.y, loser.color, 50);
+              }
+              combatCount++;
+            }
+          }
+        }
+      } else {
+        // 1v1 combat
+        if (rider1.alive && rider2.alive) {
+          const p1Hits = checkBeakCombat(rider1, rider2);
+          const p2Hits = checkBeakCombat(rider2, rider1);
+          if (p1Hits && p2Hits) {
+            const p1Retro = rider1.retroPedaling, p2Retro = rider2.retroPedaling;
+            if (p1Retro && !p2Retro) { knockoutRider(rider1); spawnExplosion(rider1.x, rider1.y, C_CYAN, 50); }
+            else if (p2Retro && !p1Retro) { knockoutRider(rider2); spawnExplosion(rider2.x, rider2.y, C_MAGENTA, 50); }
+            else if (p1Retro && p2Retro) {
+              if (Math.abs(rider1.vx) > Math.abs(rider2.vx)) { knockoutRider(rider2); spawnExplosion(rider2.x, rider2.y, C_MAGENTA, 50); }
+              else { knockoutRider(rider1); spawnExplosion(rider1.x, rider1.y, C_CYAN, 50); }
+            } else {
+              const p1FS = rider1.vx * rider1.facing, p2FS = rider2.vx * rider2.facing;
+              if (p2FS > p1FS) { knockoutRider(rider1); spawnExplosion(rider1.x, rider1.y, C_CYAN, 50); }
+              else { knockoutRider(rider2); spawnExplosion(rider2.x, rider2.y, C_MAGENTA, 50); }
+            }
+          } else if (p1Hits) { knockoutRider(rider2); spawnExplosion(rider2.x, rider2.y, C_MAGENTA, 50); }
+          else if (p2Hits) { knockoutRider(rider1); spawnExplosion(rider1.x, rider1.y, C_CYAN, 50); }
+
+          // Body push
+          const dx = rider1.x - rider2.x, dy = rider1.y - rider2.y;
+          const dist = Math.sqrt(dx*dx+dy*dy);
+          if (dist < 28 && dist > 0) {
+            const nx = dx/dist, ny = dy/dist;
+            rider1.x += nx * (28-dist) * dt * 60; rider1.y += ny * (28-dist) * dt * 60;
+            rider2.x -= nx * (28-dist) * dt * 60; rider2.y -= ny * (28-dist) * dt * 60;
+          }
+        }
+      }
+
+      checkRoundEnd();
+      break;
+
+    case 'KNOCKOUT':
+      processRoundEnd(dt);
+      // Still update particles during knockout
+      if (!rider1.alive) {
+        rider1.y += rider1.knockoutVy * dt;
+        rider1.x += (Math.random()-0.5) * 300 * dt;
+      }
+      if (!rider2.alive) {
+        rider2.y += rider2.knockoutVy * dt;
+        rider2.x += (Math.random()-0.5) * 300 * dt;
+      }
+      break;
+
+    case 'GAMEOVER':
+    case 'MENU':
+      break;
+  }
+}
+
+function render() {
+  ctx.save();
+  // Scale canvas to logical size
+  const s = scale();
+  ctx.scale(s, s);
+
+  drawBackground(ctx);
+
+  if (gameState !== 'MENU') {
+    // Draw platforms
+    for (const plat of currentPlatforms) plat.draw(ctx);
+
+    // Draw orb
+    orb.draw(ctx);
+
+    // Draw riders
+    rider1.draw(ctx);
+    rider2.draw(ctx);
+
+    // Draw AI riders in 6p mode
+    for (const ai of aiRiders) ai.draw(ctx);
+
+    // Draw particles
+    for (const p of particles) p.draw(ctx);
+
+    drawBorder(ctx);
+
+    // Draw score indicator with wins
+    if (gameState === 'PLAYING' || gameState === 'KNOCKOUT') {
+      ctx.font = `${10}px 'Courier New', monospace`;
+      ctx.fillStyle = C_CYAN;
+      ctx.shadowColor = C_CYAN; ctx.shadowBlur = 4;
+      ctx.fillText(`CYAN [${'█'.repeat(roundWins[0])}${'░'.repeat(WINS_NEEDED-roundWins[0])}]`, 10, H-8);
+      ctx.fillStyle = C_MAGENTA;
+      ctx.shadowColor = C_MAGENTA;
+      ctx.fillText(`MAGENTA [${'█'.repeat(roundWins[1])}${'░'.repeat(WINS_NEEDED-roundWins[1])}]`, W-170, H-8);
+      ctx.shadowBlur = 0;
+    }
+
+    // Knockout text
+    if (gameState === 'KNOCKOUT') {
+      const alpha = Math.min(1, knockoutTimer * 2);
+      ctx.globalAlpha = alpha;
+      ctx.font = `bold ${36}px 'Courier New', monospace`;
+      ctx.textAlign = 'center';
+
+      if (lastRoundWinner === 1) {
+        ctx.fillStyle = C_CYAN;
+        ctx.shadowColor = C_CYAN;
+        ctx.fillText('CYAN SCORES!', W/2, H/2 - 20);
+      } else {
+        ctx.fillStyle = C_MAGENTA;
+        ctx.shadowColor = C_MAGENTA;
+        ctx.fillText('MAGENTA SCORES!', W/2, H/2 - 20);
+      }
+      ctx.shadowBlur = 15;
+      ctx.font = `16px 'Courier New', monospace`;
+      ctx.fillStyle = C_AMBER;
+      ctx.shadowColor = C_AMBER;
+      ctx.fillText(`${roundWins[0]} — ${roundWins[1]}`, W/2, H/2 + 15);
+
+      ctx.globalAlpha = 1;
+      ctx.textAlign = 'left';
+      ctx.shadowBlur = 0;
+    }
+  }
+
+  ctx.restore();
+}
+
+// --- UI Events ---
+const overlay = document.getElementById('overlay');
+const startBtn = document.getElementById('startBtn');
+const hud = document.getElementById('hud');
+const modeBtns = document.querySelectorAll('.modeBtn');
+
+// Mode selection
+modeBtns.forEach(btn => {
+  btn.addEventListener('click', () => {
+    modeBtns.forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    gameMode = btn.dataset.mode;
+  });
+});
+
+startBtn.addEventListener('click', () => {
+  overlay.classList.add('hidden');
+  hud.classList.add('visible');
+
+  // Clean up old game over info
+  const oldInfo = document.getElementById('gameOverInfo');
+  if (oldInfo) oldInfo.remove();
+
+  // Reset match state
+  roundWins = [0, 0];
+  lastRoundWinner = 0;
+
+  initGame();
+  startCountdown();
+});
+
+// Pause with Escape or P
+window.addEventListener('keydown', e => {
+  if (e.code === 'Escape' || e.code === 'KeyP') {
+    if (gameState === 'PLAYING') {
+      gameState = 'PAUSED';
+    } else if (gameState === 'PAUSED') {
+      gameState = 'PLAYING';
+    }
+  }
+
+  // Restart on Enter during game over
+  if (e.code === 'Enter' && gameState === 'GAMEOVER') {
+    const overlay2 = document.getElementById('overlay');
+    overlay2.classList.add('hidden');
+    const oldInfo = document.getElementById('gameOverInfo');
+    if (oldInfo) oldInfo.remove();
+    roundWins = [0, 0];
+    lastRoundWinner = 0;
+    initGame();
+    startCountdown();
+  }
+});
+
+// --- Start ---
+initGame();
+requestAnimationFrame(gameLoop);
+
+</script>
+</body>
+</html>
