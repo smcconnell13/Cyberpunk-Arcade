@@ -198,7 +198,7 @@ function generateSmoothTrack() {
     const p1 = pts[i];
     const p2 = pts[(i + 1) % n];
     const p3 = pts[(i + 2) % n];
-    for (let t = 0; t < 1; t += 1 / segments) {
+    for (let t = 0; t <= 1; t += 1 / segments) {
       smooth.push(catmullRom(p0, p1, p2, p3, Math.min(t, 1)));
     }
   }
@@ -225,6 +225,17 @@ const trackCumLen = new Float32Array(TRACK_LEN);
 for (let i = 0; i < TRACK_LEN; i++) {
   trackCumLen[i] = (i === 0) ? 0 : trackCumLen[i-1] + trackSegLen[i-1];
 }
+
+// Track bounding box (MUST be before findNearestTrackPoint)
+let trackMinX = Infinity, trackMinY = Infinity, trackMaxX = -Infinity, trackMaxY = -Infinity;
+for (const p of TRACK) {
+  trackMinX = Math.min(trackMinX, p.x);
+  trackMinY = Math.min(trackMinY, p.y);
+  trackMaxX = Math.max(trackMaxX, p.x);
+  trackMaxY = Math.max(trackMaxY, p.y);
+}
+const trackW = trackMaxX - trackMinX;
+const trackH = trackMaxY - trackMinY;
 
 // Find nearest track point using binary search on cumulative distance
 // Then refine with local search
@@ -264,17 +275,6 @@ function findNearestTrackPoint(px, py) {
   const closestY = TRACK[bestIdx].y + (TRACK[(bestIdx+1)%TRACK_LEN].y - TRACK[bestIdx].y) * bestT;
   return { idx: bestIdx, dist: Math.sqrt(bestDist), cx: closestX, cy: closestY };
 }
-
-// Track bounding box
-let trackMinX = Infinity, trackMinY = Infinity, trackMaxX = -Infinity, trackMaxY = -Infinity;
-for (const p of TRACK) {
-  trackMinX = Math.min(trackMinX, p.x);
-  trackMinY = Math.min(trackMinY, p.y);
-  trackMaxX = Math.max(trackMaxX, p.x);
-  trackMaxY = Math.max(trackMaxY, p.y);
-}
-const trackW = trackMaxX - trackMinX;
-const trackH = trackMaxY - trackMinY;
 
 // Half-track lengths for checkpoints
 const cp25 = Math.floor(totalTrackLen * 0.25);
