@@ -1,0 +1,1095 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CYBER RACE // 2087</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #000;
+    overflow: hidden;
+    font-family: 'Courier New', monospace;
+    width: 100vw; height: 100vh;
+    cursor: default;
+  }
+  canvas { display: block; }
+  #scanlines {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none; z-index: 10;
+    background: repeating-linear-gradient(
+      0deg, rgba(0,0,0,0.12), rgba(0,0,0,0.12) 1px,
+      transparent 1px, transparent 3px
+    );
+  }
+  #vignette {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    pointer-events: none; z-index: 11;
+    background: radial-gradient(ellipse at center, transparent 50%, rgba(0,0,0,0.7) 100%);
+  }
+  @keyframes flicker {
+    0%, 100% { opacity: 1; }
+    92% { opacity: 1; }
+    93% { opacity: 0.8; }
+    94% { opacity: 1; }
+    96% { opacity: 0.85; }
+    97% { opacity: 1; }
+  }
+  #overlay {
+    position: fixed; top: 0; left: 0;
+    width: 100%; height: 100%;
+    display: flex; flex-direction: column;
+    justify-content: center; align-items: center;
+    z-index: 20;
+    background: rgba(0,0,0,0.88);
+    animation: flicker 4s infinite;
+  }
+  #overlay.hidden { display: none; }
+  #overlay h1 {
+    font-family: 'Courier New', monospace;
+    font-size: clamp(28px, 5vw, 64px);
+    color: #00ffff;
+    text-shadow: 0 0 10px #00ffff, 0 0 30px #00ffff, 0 0 60px #0080ff;
+    letter-spacing: 0.2em;
+    margin-bottom: 8px;
+  }
+  #overlay .subtitle {
+    font-size: clamp(10px, 1.5vw, 18px);
+    color: #ff00ff;
+    text-shadow: 0 0 10px #ff00ff;
+    letter-spacing: 0.4em;
+    margin-bottom: 40px;
+  }
+  .menu-btn {
+    display: block;
+    margin: 10px auto;
+    padding: 12px 40px;
+    background: transparent;
+    border: 2px solid #00ffff;
+    color: #00ffff;
+    font-family: 'Courier New', monospace;
+    font-size: clamp(14px, 2vw, 20px);
+    letter-spacing: 0.2em;
+    cursor: pointer;
+    text-transform: uppercase;
+    transition: all 0.15s;
+    box-shadow: 0 0 10px rgba(0,255,255,0.3);
+    min-width: 280px;
+  }
+  .menu-btn:hover {
+    background: rgba(0,255,255,0.15);
+    box-shadow: 0 0 20px rgba(0,255,255,0.6);
+  }
+  .menu-btn.magenta {
+    border-color: #ff00ff;
+    color: #ff00ff;
+    box-shadow: 0 0 10px rgba(255,0,255,0.3);
+  }
+  .menu-btn.magenta:hover {
+    background: rgba(255,0,255,0.15);
+    box-shadow: 0 0 20px rgba(255,0,255,0.6);
+  }
+  .menu-btn.amber {
+    border-color: #ffbf00;
+    color: #ffbf00;
+    box-shadow: 0 0 10px rgba(255,191,0,0.3);
+  }
+  .menu-btn.amber:hover {
+    background: rgba(255,191,0,0.15);
+    box-shadow: 0 0 20px rgba(255,191,0,0.6);
+  }
+  .instructions {
+    margin-top: 30px;
+    text-align: center;
+    font-size: clamp(10px, 1.2vw, 14px);
+    color: #888;
+    line-height: 2;
+  }
+  .instructions .cyan { color: #00ffff; text-shadow: 0 0 5px #00ffff; }
+  .instructions .magenta { color: #ff00ff; text-shadow: 0 0 5px #ff00ff; }
+  .go-back {
+    position: fixed;
+    top: 15px; left: 15px;
+    z-index: 30;
+    background: rgba(0,0,0,0.7);
+    border: 1px solid #ff0;
+    color: #ff0;
+    font-family: 'Courier New', monospace;
+    font-size: 12px;
+    padding: 6px 14px;
+    cursor: pointer;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+  }
+  .go-back:hover { background: rgba(255,255,0,0.15); }
+</style>
+</head>
+<body>
+<canvas id="gameCanvas"></canvas>
+<div id="scanlines"></div>
+<div id="vignette"></div>
+<div id="overlay"></div>
+<button class="go-back" id="backBtn">← BACK</button>
+
+<script>
+// ============================================================
+// CYBER RACE // 2087 — Top-down two-player racing
+// ============================================================
+
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+const overlay = document.getElementById('overlay');
+const backBtn = document.getElementById('backBtn');
+
+let W, H, scale;
+function resize() {
+  W = canvas.width = window.innerWidth;
+  H = canvas.height = window.innerHeight;
+  scale = Math.min(W / 1200, H / 750);
+}
+window.addEventListener('resize', resize);
+resize();
+
+// ============================================================
+// TRACK DEFINITION
+// ============================================================
+const ROAD_WIDTH = 72;
+
+// Waypoints: a nice circuit shape (closed loop)
+const TRACK_WAYPOINTS = [
+  [ 0,   -200],
+  [ 180, -200],
+  [ 320, -160],
+  [ 420,  -60],
+  [ 420,   40],
+  [ 380,  140],
+  [ 280,  220],
+  [ 140,  260],
+  [   0,  260],
+  [-140,  220],
+  [-260,  140],
+  [-380,   40],
+  [-420,  -60],
+  [-420, -160],
+  [-340, -240],
+  [-200, -280],
+  [ -60, -280],
+  [  40, -240],
+];
+
+function catmullRom(p0, p1, p2, p3, t) {
+  const t2 = t * t, t3 = t2 * t;
+  return {
+    x: 0.5 * ((2*p1.x) + (-p0.x+p2.x)*t + (2*p0.x-5*p1.x+4*p2.x-p3.x)*t2 + (-p0.x+3*p1.x-3*p2.x+p3.x)*t3),
+    y: 0.5 * ((2*p1.y) + (-p0.y+p2.y)*t + (2*p0.y-5*p1.y+4*p2.y-p3.y)*t2 + (-p0.y+3*p1.y-3*p2.y+p3.y)*t3),
+  };
+}
+
+function generateSmoothTrack() {
+  const pts = TRACK_WAYPOINTS;
+  const n = pts.length;
+  const segments = 64;
+  const smooth = [];
+
+  for (let i = 0; i < n; i++) {
+    const p0 = pts[(i - 1 + n) % n];
+    const p1 = pts[i];
+    const p2 = pts[(i + 1) % n];
+    const p3 = pts[(i + 2) % n];
+    for (let t = 0; t < 1; t += 1 / segments) {
+      smooth.push(catmullRom(p0, p1, p2, p3, Math.min(t, 1)));
+    }
+  }
+  return smooth;
+}
+
+const TRACK = generateSmoothTrack();
+const TRACK_LEN = TRACK.length;
+
+// Precompute cumulative distances for checkpoint detection
+const trackSegLen = [];
+let totalTrackLen = 0;
+for (let i = 0; i < TRACK_LEN; i++) {
+  const ni = (i + 1) % TRACK_LEN;
+  const dx = TRACK[ni].x - TRACK[i].x;
+  const dy = TRACK[ni].y - TRACK[i].y;
+  const d = Math.sqrt(dx * dx + dy * dy);
+  trackSegLen.push(d);
+  totalTrackLen += d;
+}
+
+// Precompute cumulative offset for each segment
+const trackCumLen = new Float32Array(TRACK_LEN);
+for (let i = 0; i < TRACK_LEN; i++) {
+  trackCumLen[i] = (i === 0) ? 0 : trackCumLen[i-1] + trackSegLen[i-1];
+}
+
+// Find nearest track point using binary search on cumulative distance
+// Then refine with local search
+function findNearestTrackPoint(px, py) {
+  // Rough estimate based on angle from center
+  const cx = (trackMinX + trackMaxX) / 2;
+  const cy = (trackMinY + trackMaxY) / 2;
+  const angle = Math.atan2(py - cy, px - cx);
+  // Map angle to approximate index
+  const rough = Math.floor(((angle + Math.PI) / (2 * Math.PI)) * TRACK_LEN) % TRACK_LEN;
+  // Search nearby indices
+  const searchRange = 8;
+  let bestDist = Infinity, bestIdx = 0, bestT = 0;
+
+  for (let offset = -searchRange; offset <= searchRange; offset++) {
+    const i = ((rough + offset) % TRACK_LEN + TRACK_LEN) % TRACK_LEN;
+    const ni = (i + 1) % TRACK_LEN;
+    // Project point onto segment
+    const sx = TRACK[ni].x - TRACK[i].x;
+    const sy = TRACK[ni].y - TRACK[i].y;
+    const segLen = trackSegLen[i];
+    let t = segLen > 0 ? ((px - TRACK[i].x) * sx + (py - TRACK[i].y) * sy) / (segLen * segLen) : 0;
+    t = Math.max(0, Math.min(1, t));
+    const closestX = TRACK[i].x + sx * t;
+    const closestY = TRACK[i].y + sy * t;
+    const dx = px - closestX;
+    const dy = py - closestY;
+    const dist = dx * dx + dy * dy;
+    if (dist < bestDist) {
+      bestDist = dist;
+      bestIdx = i;
+      bestT = t;
+    }
+  }
+
+  const closestX = TRACK[bestIdx].x + (TRACK[(bestIdx+1)%TRACK_LEN].x - TRACK[bestIdx].x) * bestT;
+  const closestY = TRACK[bestIdx].y + (TRACK[(bestIdx+1)%TRACK_LEN].y - TRACK[bestIdx].y) * bestT;
+  return { idx: bestIdx, dist: Math.sqrt(bestDist), cx: closestX, cy: closestY };
+}
+
+// Track bounding box
+let trackMinX = Infinity, trackMinY = Infinity, trackMaxX = -Infinity, trackMaxY = -Infinity;
+for (const p of TRACK) {
+  trackMinX = Math.min(trackMinX, p.x);
+  trackMinY = Math.min(trackMinY, p.y);
+  trackMaxX = Math.max(trackMaxX, p.x);
+  trackMaxY = Math.max(trackMaxY, p.y);
+}
+const trackW = trackMaxX - trackMinX;
+const trackH = trackMaxY - trackMinY;
+
+// Half-track lengths for checkpoints
+const cp25 = Math.floor(totalTrackLen * 0.25);
+const cp50 = Math.floor(totalTrackLen * 0.5);
+const cp75 = Math.floor(totalTrackLen * 0.75);
+
+// Find track indices near each distance
+function findIndexAtDistance(targetDist) {
+  for (let i = 0; i < TRACK_LEN; i++) {
+    if (trackCumLen[i] >= targetDist) return i;
+  }
+  return TRACK_LEN - 1;
+}
+const cpIdx25 = findIndexAtDistance(cp25);
+const cpIdx50 = findIndexAtDistance(cp50);
+const cpIdx75 = findIndexAtDistance(cp75);
+
+// ============================================================
+// INPUT
+// ============================================================
+const keyState = {};
+window.addEventListener('keydown', e => {
+  keyState[e.code] = true;
+  if (['Space','ArrowUp','ArrowDown','ArrowLeft','ArrowRight'].includes(e.code)) e.preventDefault();
+});
+window.addEventListener('keyup', e => { keyState[e.code] = false; });
+
+// P1: WASD (tank controls - relative to car heading)
+// P2: IJKL (I=up, J=left, K=down, L=right)
+function p1Throttle()    { return keyState['KeyW']; }
+function p1Brake()       { return keyState['KeyS']; }
+function p1SteerLeft()   { return keyState['KeyA']; }
+function p1SteerRight()  { return keyState['KeyD']; }
+function p2Throttle()    { return keyState['KeyI']; }
+function p2Brake()       { return keyState['KeyK']; }
+function p2SteerLeft()   { return keyState['KeyJ']; }
+function p2SteerRight()  { return keyState['KeyL']; }
+
+// ============================================================
+// GAME MODES
+// ============================================================
+const MODE = { MENU: 0, RACING: 1, FINISHED: 2, TIME_TRIAL: 3, TT_RESULT: 4 };
+let gameMode = MODE.MENU;
+
+// ============================================================
+// CAR PHYSICS
+// ============================================================
+class Car {
+  constructor(color, glowColor, offsetX, offsetY, isP2) {
+    this.color = color;
+    this.glowColor = glowColor;
+    this.isP2 = isP2;
+    this.reset(offsetX, offsetY);
+  }
+
+  reset(startX, startY, angle) {
+    this.x = startX;
+    this.y = startY;
+    this.angle = angle;
+    this.speed = 0;
+    this.maxSpeed = 7.0;
+    this.offTrackMaxSpeed = 1.8;
+    this.accel = 0.14;
+    this.brake = 0.18;
+    this.friction = 0.015;
+    this.turnSpeed = 0.042;
+    this.laps = 0;
+    this.checkpoints = 0;
+    this.finished = false;
+    this.finishTime = 0;
+    this.trail = [];
+    this.driftAmount = 0;
+    this.prevNearestIdx = -1;
+    this.lapNotice = 0; // countdown for lap notification text
+  }
+
+  get isOnTrack() {
+    const nearest = findNearestTrackPoint(this.x, this.y);
+    return nearest.dist < ROAD_WIDTH / 2;
+  }
+
+  update(dt) {
+    if (this.finished) {
+      this.speed *= 0.97;
+      this.x += Math.cos(this.angle) * this.speed;
+      this.y += Math.sin(this.angle) * this.speed;
+      return;
+    }
+
+    const nearest = findNearestTrackPoint(this.x, this.y);
+    this.isOnTrack = nearest.dist < ROAD_WIDTH / 2;
+    this.nearestIdx = nearest.idx;
+
+    const effectiveMax = this.isOnTrack ? this.maxSpeed : this.offTrackMaxSpeed;
+
+    // Throttle
+    const throttleFn = this.isP2 ? p2Throttle : p1Throttle;
+    const brakeFn = this.isP2 ? p2Brake : p1Brake;
+    const steerLeft = this.isP2 ? p2SteerLeft : p1SteerLeft;
+    const steerRight = this.isP2 ? p2SteerRight : p1SteerRight;
+
+    if (throttleFn()) {
+      this.speed = Math.min(this.speed + this.accel * (this.isOnTrack ? 1 : 0.25), effectiveMax);
+    } else if (brakeFn()) {
+      this.speed = Math.max(this.speed - this.brake, -effectiveMax * 0.35);
+    } else {
+      if (this.speed > 0) this.speed = Math.max(0, this.speed - this.friction);
+      else if (this.speed < 0) this.speed = Math.min(0, this.speed + this.friction);
+    }
+
+    // Steering (tank-style)
+    const turnFactor = Math.min(Math.abs(this.speed) / 2, 1);
+    if (steerLeft()) {
+      this.angle -= this.turnSpeed * turnFactor;
+    }
+    if (steerRight()) {
+      this.angle += this.turnSpeed * turnFactor;
+    }
+
+    // Drift detection: turning hard at speed
+    this.driftAmount = 0;
+    const speedMag = Math.abs(this.speed);
+    if (speedMag > 3 && (steerLeft() || steerRight())) {
+      this.driftAmount = Math.min(speedMag / this.maxSpeed, 1);
+    }
+
+    // Move
+    this.x += Math.cos(this.angle) * this.speed;
+    this.y += Math.sin(this.angle) * this.speed;
+
+    // Trail particles
+    if (speedMag > 1.5) {
+      this.trail.push({
+        x: this.x - Math.cos(this.angle) * 12,
+        y: this.y - Math.sin(this.angle) * 12,
+        life: 25,
+        maxLife: 25,
+        drift: this.driftAmount
+      });
+    }
+    this.trail = this.trail.filter(t => { t.life--; return t.life > 0; });
+
+    // Lap/checkpoint logic
+    this.checkpointLogic(nearest.idx);
+
+    if (this.lapNotice > 0) this.lapNotice -= dt;
+  }
+
+  checkpointLogic(currentIdx) {
+    // Determine total distance traveled around track
+    // We track the previous index and look at direction
+    if (this.prevNearestIdx === -1) {
+      this.prevNearestIdx = currentIdx;
+      return;
+    }
+
+    // Check if we crossed the start line (index near 0)
+    const distToStart = Math.min(Math.abs(currentIdx - 0), TRACK_LEN - Math.abs(currentIdx - 0));
+    const prevDistToStart = Math.min(Math.abs(this.prevNearestIdx - 0), TRACK_LEN - Math.abs(this.prevNearestIdx - 0));
+
+    // Track direction: if we were far from start and now near start, we completed a lap
+    if (distToStart < 10 && prevDistToStart > TRACK_LEN * 0.15) {
+      // Must have passed checkpoints
+      if (this.checkpoints >= 3) {
+        this.laps++;
+        this.checkpoints = 0;
+        this.lapNotice = 90; // show for ~1.5 seconds at 60fps
+      }
+    }
+
+    // Check checkpoints
+    const checkpoints = [cpIdx25, cpIdx50, cpIdx75];
+    for (let i = 0; i < checkpoints.length; i++) {
+      const cIdx = checkpoints[i];
+      const dist = Math.abs(currentIdx - cIdx);
+      const wrapDist = TRACK_LEN - dist;
+      if (Math.min(dist, wrapDist) < 8) {
+        this.checkpoints = Math.max(this.checkpoints, i + 1);
+      }
+    }
+
+    this.prevNearestIdx = currentIdx;
+  }
+
+  draw(ctx, camX, camY, camScale) {
+    const sx = (this.x - camX) * camScale + W / 2;
+    const sy = (this.y - camY) * camScale + H / 2;
+
+    // Trail
+    for (const t of this.trail) {
+      const tx = (t.x - camX) * camScale + W / 2;
+      const ty = (t.y - camY) * camScale + H / 2;
+      const alpha = t.life / t.maxLife;
+      const r = this.isP2 ? 255 : 0;
+      const g = this.isP2 ? 0 : 255;
+      const b = this.isP2 ? 255 : 255;
+      ctx.fillStyle = t.drift > 0 ?
+        `rgba(255,200,50,${alpha * 0.5})` :
+        `rgba(${r},${g},${b},${alpha * 0.25})`;
+      ctx.beginPath();
+      ctx.arc(tx, ty, (2 + t.drift * 2) * camScale, 0, Math.PI * 2);
+      ctx.fill();
+    }
+
+    // Smoke when drifting
+    if (this.driftAmount > 0.2 || (!this.isOnTrack && Math.abs(this.speed) > 0.5)) {
+      const n = 1 + Math.floor(this.driftAmount * 2);
+      for (let i = 0; i < n; i++) {
+        const smokeX = this.x - Math.cos(this.angle) * 10 + (Math.random() - 0.5) * 14;
+        const smokeY = this.y - Math.sin(this.angle) * 10 + (Math.random() - 0.5) * 14;
+        const ssx = (smokeX - camX) * camScale + W / 2;
+        const ssy = (smokeY - camY) * camScale + H / 2;
+        ctx.fillStyle = `rgba(180,180,200,${0.05 + Math.random() * 0.1})`;
+        ctx.beginPath();
+        ctx.arc(ssx, ssy, (4 + Math.random() * 6) * camScale, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    // Car body
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(this.angle);
+
+    // Glow effect
+    ctx.shadowColor = this.glowColor;
+    ctx.shadowBlur = 18 * camScale;
+
+    const cw = 26 * camScale;
+    const ch = 15 * camScale;
+
+    // Main body
+    ctx.fillStyle = this.color;
+    ctx.strokeStyle = this.glowColor;
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.rect(-cw/2, -ch/2, cw, ch);
+    ctx.fill();
+    ctx.stroke();
+
+    // Windshield (front)
+    ctx.shadowBlur = 0;
+    ctx.fillStyle = 'rgba(0,0,0,0.5)';
+    ctx.fillRect(cw * 0.12, -ch * 0.32, cw * 0.22, ch * 0.64);
+
+    // Headlights
+    ctx.fillStyle = '#fff';
+    ctx.shadowColor = this.glowColor;
+    ctx.shadowBlur = 6;
+    ctx.fillRect(cw/2 - 2, -ch/2 + 1, 3, 3);
+    ctx.fillRect(cw/2 - 2, ch/2 - 4, 3, 3);
+
+    // Taillights
+    ctx.fillStyle = '#ff0044';
+    ctx.shadowColor = '#ff0044';
+    ctx.fillRect(-cw/2, -ch/2 + 1, 2, 3);
+    ctx.fillRect(-cw/2, ch/2 - 4, 2, 3);
+
+    // Driver indicator
+    ctx.fillStyle = this.glowColor;
+    ctx.fillRect(-3, -4, 6, 8);
+
+    ctx.restore();
+
+    // Speed bar (only during gameplay)
+    if (gameMode === MODE.RACING || gameMode === MODE.TIME_TRIAL) {
+      const speedPct = Math.abs(this.speed) / this.maxSpeed;
+      const barW = 32 * camScale;
+      const barH = 5 * camScale;
+      const barX = sx - barW/2;
+      const barY = sy - 20 * camScale;
+
+      ctx.fillStyle = 'rgba(0,0,0,0.6)';
+      ctx.fillRect(barX - 1, barY - 1, barW + 2, barH + 2);
+      ctx.fillStyle = speedPct > 0.85 ? '#39ff14' : speedPct > 0.5 ? '#ff0' : '#888';
+      ctx.fillRect(barX, barY, barW * speedPct, barH);
+    }
+  }
+}
+
+// ============================================================
+// PARTICLES
+// ============================================================
+const particles = [];
+
+function spawnParticles(x, y, color, count) {
+  for (let i = 0; i < count; i++) {
+    particles.push({
+      x, y,
+      vx: (Math.random() - 0.5) * 5,
+      vy: (Math.random() - 0.5) * 5,
+      life: 25 + Math.random() * 15,
+      maxLife: 40,
+      color,
+      size: 1 + Math.random() * 3,
+    });
+  }
+}
+
+function updateAndDrawParticles(camX, camY, camScale) {
+  for (let i = particles.length - 1; i >= 0; i--) {
+    const p = particles[i];
+    p.x += p.vx;
+    p.y += p.vy;
+    p.vx *= 0.95;
+    p.vy *= 0.95;
+    p.life--;
+    if (p.life <= 0) { particles.splice(i, 1); continue; }
+    const px = (p.x - camX) * camScale + W / 2;
+    const py = (p.y - camY) * camScale + H / 2;
+    const alpha = p.life / p.maxLife;
+    const rgb = p.color.match(/\d+/g).map(Number);
+    ctx.fillStyle = `rgba(${rgb[0]},${rgb[1]},${rgb[2]},${alpha})`;
+    ctx.beginPath();
+    ctx.arc(px, py, p.size * camScale, 0, Math.PI * 2);
+    ctx.fill();
+  }
+}
+
+// ============================================================
+// RENDERING
+// ============================================================
+function renderTrack(camX, camY, camScale) {
+  // Grid background
+  const gridSize = 40 * camScale;
+  const offsetX = (-camX * camScale + W/2) % gridSize;
+  const offsetY = (-camY * camScale + H/2) % gridSize;
+
+  ctx.strokeStyle = 'rgba(0,255,255,0.03)';
+  ctx.lineWidth = 0.5;
+  for (let x = offsetX; x < W; x += gridSize) {
+    ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, H); ctx.stroke();
+  }
+  for (let y = offsetY; y < H; y += gridSize) {
+    ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(W, y); ctx.stroke();
+  }
+
+  // Outer curb (magenta)
+  ctx.strokeStyle = '#ff00ff';
+  ctx.lineWidth = (ROAD_WIDTH + 10) * camScale;
+  ctx.shadowColor = '#ff00ff';
+  ctx.shadowBlur = 10;
+  ctx.globalAlpha = 0.2;
+  ctx.lineCap = 'round'; ctx.lineJoin = 'round';
+  ctx.beginPath();
+  for (let i = 0; i < TRACK_LEN; i++) {
+    const px = (TRACK[i].x - camX) * camScale + W/2;
+    const py = (TRACK[i].y - camY) * camScale + H/2;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.closePath(); ctx.stroke();
+
+  // Road surface
+  ctx.shadowBlur = 0;
+  ctx.strokeStyle = '#14142a';
+  ctx.lineWidth = ROAD_WIDTH * camScale;
+  ctx.beginPath();
+  for (let i = 0; i < TRACK_LEN; i++) {
+    const px = (TRACK[i].x - camX) * camScale + W/2;
+    const py = (TRACK[i].y - camY) * camScale + H/2;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.closePath(); ctx.stroke();
+
+  // Inner curb (cyan)
+  ctx.strokeStyle = '#00ffff';
+  ctx.lineWidth = (ROAD_WIDTH - 4) * camScale;
+  ctx.shadowColor = '#00ffff';
+  ctx.shadowBlur = 8;
+  ctx.globalAlpha = 0.2;
+  ctx.beginPath();
+  for (let i = 0; i < TRACK_LEN; i++) {
+    const px = (TRACK[i].x - camX) * camScale + W/2;
+    const py = (TRACK[i].y - camY) * camScale + H/2;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.closePath(); ctx.stroke();
+  ctx.globalAlpha = 1;
+  ctx.shadowBlur = 0;
+
+  // Center dashed line
+  ctx.strokeStyle = 'rgba(255,255,255,0.1)';
+  ctx.lineWidth = 1;
+  ctx.setLineDash([6 * camScale, 14 * camScale]);
+  ctx.beginPath();
+  for (let i = 0; i < TRACK_LEN; i++) {
+    const px = (TRACK[i].x - camX) * camScale + W/2;
+    const py = (TRACK[i].y - camY) * camScale + H/2;
+    if (i === 0) ctx.moveTo(px, py); else ctx.lineTo(px, py);
+  }
+  ctx.closePath(); ctx.stroke();
+  ctx.setLineDash([]);
+
+  // Finish line (checkered)
+  const fP = TRACK[0];
+  const fP1 = TRACK[1];
+  const fAngle = Math.atan2(fP1.y - fP.y, fP1.x - fP.x);
+  const fsx = (fP.x - camX) * camScale + W/2;
+  const fsy = (fP.y - camY) * camScale + H/2;
+  const ch = 5 * camScale;
+  const nc = Math.floor(ROAD_WIDTH / (ch * 2));
+
+  ctx.save();
+  ctx.translate(fsx, fsy);
+  ctx.rotate(fAngle + Math.PI/2);
+
+  for (let row = -nc; row < nc; row++) {
+    for (let col = 0; col < 2; col++) {
+      const cx2 = row * ch * 2;
+      const cy2 = col * ch - ch;
+      ctx.fillStyle = (row + col) % 2 === 0 ? '#fff' : '#111';
+      ctx.fillRect(cx2 - ch/2, cy2 - ch/2, ch, ch);
+    }
+  }
+
+  // "START" text
+  ctx.rotate(-(fAngle + Math.PI/2));
+  ctx.fillStyle = '#ff0';
+  ctx.shadowColor = '#ff0';
+  ctx.shadowBlur = 8;
+  ctx.font = `bold ${11 * camScale}px 'Courier New', monospace`;
+  ctx.textAlign = 'center';
+  ctx.fillText('START / FINISH', 0, -ROAD_WIDTH/2 - 12*camScale);
+  ctx.shadowBlur = 0;
+  ctx.restore();
+}
+
+// ============================================================
+// HUD
+// ============================================================
+function drawHUD(p1, p2, mode) {
+  const pad = 18;
+  const fs = Math.max(13, Math.min(W, H) / 42);
+
+  ctx.font = `bold ${fs}px 'Courier New', monospace`;
+  ctx.textAlign = 'left';
+
+  // P1 info (top-left)
+  ctx.fillStyle = '#00ffff';
+  ctx.shadowColor = '#00ffff';
+  ctx.shadowBlur = 5;
+  ctx.fillText(`P1 [WASD]`, pad, pad + fs);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#fff';
+  ctx.fillText(`Laps: ${Math.min(p1.laps, raceLaps)} / ${raceLaps}`, pad, pad + fs * 2.3);
+  ctx.font = `${fs * 0.85}px 'Courier New', monospace`;
+  if (p1.isOnTrack) {
+    ctx.fillStyle = '#aaa';
+    ctx.fillText(`${(Math.abs(p1.speed) * 20).toFixed(0)} km/h`, pad, pad + fs * 3.8);
+  } else {
+    ctx.fillStyle = '#ff0';
+    ctx.fillText('>>> OFF TRACK <<<', pad, pad + fs * 3.8);
+  }
+
+  // P2 info (top-right)
+  ctx.textAlign = 'right';
+  ctx.font = `bold ${fs}px 'Courier New', monospace`;
+  ctx.fillStyle = '#ff00ff';
+  ctx.shadowColor = '#ff00ff';
+  ctx.shadowBlur = 5;
+  ctx.fillText(`P2 [JKL]`, W - pad, pad + fs);
+  ctx.shadowBlur = 0;
+
+  ctx.fillStyle = '#fff';
+  ctx.fillText(`Laps: ${Math.min(p2.laps, raceLaps)} / ${raceLaps}`, W - pad, pad + fs * 2.3);
+  ctx.font = `${fs * 0.85}px 'Courier New', monospace`;
+  if (p2.isOnTrack) {
+    ctx.fillStyle = '#aaa';
+    ctx.fillText(`${(Math.abs(p2.speed) * 20).toFixed(0)} km/h`, W - pad, pad + fs * 3.8);
+  } else {
+    ctx.fillStyle = '#ff0';
+    ctx.fillText('>>> OFF TRACK <<<', W - pad, pad + fs * 3.8);
+  }
+
+  // Lap counter (center-top)
+  ctx.textAlign = 'center';
+  ctx.font = `bold ${fs * 1.3}px 'Courier New', monospace`;
+  ctx.fillStyle = '#ff0';
+  ctx.shadowColor = '#ff0';
+  ctx.shadowBlur = 8;
+  const lapText = mode === MODE.TIME_TRIAL ?
+    `LAP ${Math.min(p1.laps + 1, ttLaps)} / ${ttLaps}` :
+    `LAP ${Math.min(Math.max(p1.laps, p2.laps) + 1, raceLaps)} / ${raceLaps}`;
+  ctx.fillText(lapText, W/2, pad + fs * 1.5);
+  ctx.shadowBlur = 0;
+
+  // Lap notification
+  if (p1.lapNotice > 0) {
+    ctx.font = `bold ${fs * 1.5}px 'Courier New', monospace`;
+    ctx.fillStyle = '#39ff14';
+    ctx.shadowColor = '#39ff14';
+    ctx.shadowBlur = 15;
+    ctx.fillText(`LAP ${p1.laps} COMPLETE!`, W/2, H/2 - 50);
+    ctx.shadowBlur = 0;
+  }
+  if (p2.lapNotice > 0) {
+    ctx.font = `bold ${fs * 1.5}px 'Courier New', monospace`;
+    ctx.fillStyle = '#ff00ff';
+    ctx.shadowColor = '#ff00ff';
+    ctx.shadowBlur = 15;
+    ctx.fillText(`LAP ${p2.laps} COMPLETE!`, W/2, H/2);
+    ctx.shadowBlur = 0;
+  }
+
+  // Countdown
+  if (countdownTimer > 0) {
+    ctx.font = `bold ${fs * 4}px 'Courier New', monospace`;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    const countText = countdownTimer > 0.1 ? Math.ceil(countdownTimer).toString() : 'GO!';
+    ctx.fillStyle = countdownTimer > 0.1 ? '#ff0' : '#39ff14';
+    ctx.shadowColor = ctx.fillStyle;
+    ctx.shadowBlur = 20;
+    ctx.fillText(countText, W/2, H/2);
+    ctx.shadowBlur = 0;
+    ctx.textBaseline = 'alphabetic';
+  }
+
+  // Timer (time trial)
+  if (mode === MODE.TIME_TRIAL && raceStartTime > 0 && !p1.finished) {
+    const elapsed = (performance.now() - raceStartTime) / 1000;
+    ctx.textAlign = 'center';
+    ctx.font = `bold ${fs}px 'Courier New', monospace`;
+    ctx.fillStyle = '#39ff14';
+    ctx.shadowColor = '#39ff14';
+    ctx.shadowBlur = 8;
+    ctx.fillText(formatTime(elapsed), W/2, pad + fs * 3.8);
+    ctx.shadowBlur = 0;
+  }
+
+  // Off-track warning indicator (bottom center)
+  if (!p1.isOnTrack || !p2.isOnTrack) {
+    ctx.textAlign = 'center';
+    ctx.font = `bold ${fs * 0.9}px 'Courier New', monospace`;
+    ctx.fillStyle = '#ff0';
+    ctx.shadowColor = '#ff0';
+    ctx.shadowBlur = 10;
+    const warnings = [];
+    if (!p1.isOnTrack && Math.abs(p1.speed) > 0.5) warnings.push('P1');
+    if (!p2.isOnTrack && Math.abs(p2.speed) > 0.5) warnings.push('P2');
+    if (warnings.length > 0) {
+      ctx.fillText(`⚠ ${warnings.join(' & ')} OFF TRACK ⚠`, W/2, H - 30);
+    }
+    ctx.shadowBlur = 0;
+  }
+}
+
+function formatTime(t) {
+  const m = Math.floor(t / 60);
+  const s = Math.floor(t % 60);
+  const ms = Math.floor((t % 1) * 100);
+  return `${m.toString().padStart(2,'0')}:${s.toString().padStart(2,'0')}.${ms.toString().padStart(2,'0')}`;
+}
+
+// ============================================================
+// OVERLAYS
+// ============================================================
+let raceLaps = 10;
+let ttLaps = 5;
+let countdownTimer = 0;
+let raceStartTime = 0;
+let p1, p2, gameRunning = false;
+let cameraX = 0, cameraY = 0;
+
+function showMenu() {
+  gameMode = MODE.MENU;
+  gameRunning = false;
+  overlay.classList.remove('hidden');
+  overlay.innerHTML = `
+    <h1>CYBER RACE</h1>
+    <div class="subtitle">// 2087 // DIGITAL CIRCUIT</div>
+    <button class="menu-btn" id="btnPVP">TWO PLAYER — 10 LAPS</button>
+    <button class="menu-btn magenta" id="btnTT">TIME TRIAL — 5 LAPS</button>
+    <div class="instructions">
+      <span class="cyan">P1: W A S D</span> &nbsp;&nbsp;|&nbsp;&nbsp;
+      <span class="magenta">P2: J K L I</span><br>
+      Throttle / Brake / Steer Left / Steer Right<br>
+      First to N laps wins &bull; Stay on track!
+    </div>
+  `;
+  document.getElementById('btnPVP').addEventListener('click', () => startRace(false));
+  document.getElementById('btnTT').addEventListener('click', () => startRace(true));
+}
+
+function startRace(isTT) {
+  raceLaps = isTT ? 0 : 10;
+  ttLaps = 5;
+
+  const startP = TRACK[0];
+  const startAngle = Math.atan2(TRACK[1].y - TRACK[0].y, TRACK[1].x - TRACK[0].x);
+
+  p1 = new Car('#00cccc', '#00ffff', 0, 0, false);
+  p2 = new Car('#ff00cc', '#ff00ff', 0, 0, true);
+  p1.reset(startP.x - 15, startP.y, startAngle);
+  p2.reset(startP.x + 15, startP.y, startAngle);
+
+  particles.length = 0;
+  countdownTimer = 3.5;
+  raceStartTime = 0;
+  cameraX = (p1.x + p2.x) / 2;
+  cameraY = (p1.y + p2.y) / 2;
+
+  gameMode = isTT ? MODE.TIME_TRIAL : MODE.RACING;
+  gameRunning = true;
+  overlay.classList.add('hidden');
+
+  // Countdown loop
+  const interval = setInterval(() => {
+    countdownTimer -= 0.8;
+    if (countdownTimer <= 0) {
+      countdownTimer = 0;
+      raceStartTime = performance.now();
+      clearInterval(interval);
+    }
+  }, 100);
+}
+
+function showRaceFinished() {
+  gameMode = MODE.FINISHED;
+  gameRunning = false;
+
+  // Determine winner
+  let winner = 0, winColor, winName;
+  if (p1.finished && p2.finished) {
+    if (p1.finishTime < p2.finishTime) {
+      winner = 1; winColor = '#00ffff'; winName = 'PLAYER 1';
+    } else if (p2.finishTime < p1.finishTime) {
+      winner = 2; winColor = '#ff00ff'; winName = 'PLAYER 2';
+    } else {
+      winner = 0; winColor = '#ff0'; winName = 'DRAW';
+    }
+  } else if (p1.finished) {
+    winner = 1; winColor = '#00ffff'; winName = 'PLAYER 1';
+  } else if (p2.finished) {
+    winner = 2; winColor = '#ff00ff'; winName = 'PLAYER 2';
+  }
+
+  overlay.innerHTML = `
+    <h1 style="color:${winColor};text-shadow:0 0 10px ${winColor},0 0 30px ${winColor},0 0 60px ${winColor};">${winName}</h1>
+    <div class="subtitle">WINS THE RACE</div>
+    <div style="margin:20px 0;font-size:15px;color:#aaa;line-height:2;">
+      <div><span class="cyan">P1:</span> ${p1.laps} laps${p1.finished ? ' — ' + formatTime(p1.finishTime/1000) : ' — DNF'}</div>
+      <div><span class="magenta">P2:</span> ${p2.laps} laps${p2.finished ? ' — ' + formatTime(p2.finishTime/1000) : ' — DNF'}</div>
+    </div>
+    <button class="menu-btn" id="btnRestart">RACE AGAIN</button>
+    <button class="menu-btn magenta" id="btnMenu">MAIN MENU</button>
+  `;
+  document.getElementById('btnRestart').addEventListener('click', () => startRace(false));
+  document.getElementById('btnMenu').addEventListener('click', showMenu);
+}
+
+function showTTResult() {
+  gameMode = MODE.TT_RESULT;
+  gameRunning = false;
+  const time = formatTime(p1.finishTime / 1000);
+
+  try {
+    let bestTimes = JSON.parse(localStorage.getItem('cyber_race_tt_best') || '{}');
+    const mode = `${ttLaps}lap`;
+    if (!bestTimes[mode] || p1.finishTime < bestTimes[mode]) {
+      bestTimes[mode] = p1.finishTime;
+      localStorage.setItem('cyber_race_tt_best', JSON.stringify(bestTimes));
+    }
+  } catch(e) {}
+
+  let bestHtml = '';
+  try {
+    const bestTimes = JSON.parse(localStorage.getItem('cyber_race_tt_best') || '{}');
+    const best = bestTimes[`${ttLaps}lap`];
+    if (best) {
+      bestHtml = `<div style="margin:10px 0;color:#39ff14;font-size:16px;text-shadow:0 0 8px #39ff14;">★ BEST: ${formatTime(best/1000)} ★</div>`;
+    }
+  } catch(e) {}
+
+  overlay.innerHTML = `
+    <h1 style="color:#39ff14;text-shadow:0 0 10px #39ff14,0 0 30px #39ff14;">TIME TRIAL COMPLETE</h1>
+    <div class="subtitle">${ttLaps} LAP CIRCUIT</div>
+    <div style="margin:20px 0;font-size:40px;color:#ff0;text-shadow:0 0 15px #ff0;">${time}</div>
+    ${bestHtml}
+    <button class="menu-btn" id="btnRestart">RACE AGAIN</button>
+    <button class="menu-btn magenta" id="btnMenu">MAIN MENU</button>
+  `;
+  document.getElementById('btnRestart').addEventListener('click', () => startRace(true));
+  document.getElementById('btnMenu').addEventListener('click', showMenu);
+}
+
+// ============================================================
+// MAIN LOOP
+// ============================================================
+let lastTime = 0;
+
+function getCamScale() {
+  const neededW = (trackW + ROAD_WIDTH * 3) * scale;
+  const neededH = (trackH + ROAD_WIDTH * 3) * scale;
+  return Math.min(W / neededW, H / neededH, 1.4);
+}
+
+function gameLoop(timestamp) {
+  const dt = Math.min((timestamp - lastTime) / 16.67, 3);
+  lastTime = timestamp;
+
+  ctx.clearRect(0, 0, W, H);
+
+  if (gameMode === MODE.MENU) {
+    // Animated menu background
+    const camScale = getCamScale() * 0.7;
+    const cx = (trackMinX + trackMaxX) / 2;
+    const cy = (trackMinY + trackMaxY) / 2;
+    const orbitR = Math.max(trackW, trackH) * 0.6;
+    const angle = timestamp * 0.00008;
+    const camX = cx + Math.cos(angle) * orbitR;
+    const camY = cy + Math.sin(angle) * orbitR;
+
+    ctx.fillStyle = '#05050a';
+    ctx.fillRect(0, 0, W, H);
+    renderTrack(camX, camY, camScale);
+  } else {
+    const camScale = getCamScale();
+
+    // Smooth camera
+    if (p1 && p2) {
+      const midX = (p1.x + p2.x) / 2;
+      const midY = (p1.y + p2.y) / 2;
+      cameraX += (midX - cameraX) * 0.04;
+      cameraY += (midY - cameraY) * 0.04;
+    }
+
+    // Background
+    ctx.fillStyle = '#05050a';
+    ctx.fillRect(0, 0, W, H);
+
+    // Track
+    renderTrack(cameraX, cameraY, camScale);
+
+    // Update cars (only during race, after countdown)
+    if (gameRunning && countdownTimer <= 0) {
+      p1.update(dt);
+      p2.update(dt);
+
+      // Car collision
+      const dx = p2.x - p1.x;
+      const dy = p2.y - p1.y;
+      const dist = Math.sqrt(dx * dx + dy * dy);
+      if (dist < 22 && dist > 0) {
+        const nx = dx / dist;
+        const ny = dy / dist;
+        const overlap = 22 - dist;
+        p1.x -= nx * overlap * 0.4;
+        p1.y -= ny * overlap * 0.4;
+        p2.x += nx * overlap * 0.4;
+        p2.y += ny * overlap * 0.4;
+
+        // Speed exchange
+        const avgSpeed = (p1.speed + p2.speed) / 2;
+        p1.speed = avgSpeed + (p1.speed - p2.speed) * 0.3;
+        p2.speed = avgSpeed - (p1.speed - p2.speed) * 0.3;
+
+        const sparkX = (p1.x + p2.x) / 2;
+        const sparkY = (p1.y + p2.y) / 2;
+        spawnParticles(sparkX, sparkY, 'rgb(255,200,50)', 10);
+      }
+
+      // Lap notices
+      if (p1.lapNotice > 0) p1.lapNotice -= dt;
+      if (p2.lapNotice > 0) p2.lapNotice -= dt;
+
+      // Check race end
+      if (gameMode === MODE.RACING && p1.finished && p2.finished) {
+        showRaceFinished();
+      } else if (gameMode === MODE.TIME_TRIAL && p1.finished) {
+        showTTResult();
+      }
+    } else {
+      // During countdown, cars idle
+      if (p1) { p1.speed *= 0.95; p1.x += Math.cos(p1.angle) * p1.speed; p1.y += Math.sin(p1.angle) * p1.speed; }
+      if (p2) { p2.speed *= 0.95; p2.x += Math.cos(p2.angle) * p2.speed; p2.y += Math.sin(p2.angle) * p2.speed; }
+    }
+
+    // Particles
+    updateAndDrawParticles(cameraX, cameraY, camScale);
+
+    // Cars
+    if (p1) p1.draw(ctx, cameraX, cameraY, camScale);
+    if (p2) p2.draw(ctx, cameraX, cameraY, camScale);
+
+    // HUD
+    if (p1 && p2) drawHUD(p1, p2, gameMode);
+  }
+
+  requestAnimationFrame(gameLoop);
+}
+
+// ============================================================
+// INIT
+// ============================================================
+backBtn.addEventListener('click', () => {
+  overlay.classList.remove('hidden');
+  overlay.innerHTML = '';
+  gameMode = MODE.MENU;
+  gameRunning = false;
+  showMenu();
+});
+
+// Back link support
+if (window.location.hash === '#arcade-back-link') {
+  backBtn.addEventListener('click', () => {
+    window.location.href = 'arcade.html';
+  });
+} else {
+  backBtn.style.display = 'none';
+}
+
+showMenu();
+requestAnimationFrame(gameLoop);
+</script>
+</body>
+</html>
