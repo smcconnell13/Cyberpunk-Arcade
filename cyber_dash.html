@@ -562,6 +562,10 @@ let screenShake = 0;
 let screenShakeX = 0;
 let screenShakeY = 0;
 
+// Procedural spawn timer
+let proceduralSpawnTimer = 0;
+let proceduralSpawnInterval = 100;
+
 // Custom level state
 let customLevelMode = false; // true when playing a custom level
 let customLevelData = null;
@@ -691,8 +695,10 @@ function resetGame(forCustomLevel, levelData) {
   obstacles = [];
   particles = [];
   score = 0;
-  frameCount = 0;
-  screenShake = 0;
+   frameCount = 0;
+   screenShake = 0;
+   proceduralSpawnTimer = 0;
+   proceduralSpawnInterval = 100;
   transitioningToProcedural = false;
 
   scoreDisplay.textContent = '0';
@@ -1007,12 +1013,14 @@ function update() {
   }
 
   // Procedural obstacle spawning (after custom level, or in normal mode)
-  if (!customLevelMode || transitioningToProcedural) {
-    const minGap = Math.max(60, 120 - gameSpeed * 5);
-    if (frameCount % Math.floor(minGap + Math.random() * 40) === 0) {
-      spawnProceduralObstacle();
-    }
-  }
+   if (!customLevelMode || transitioningToProcedural) {
+     proceduralSpawnTimer++;
+     if (proceduralSpawnTimer >= proceduralSpawnInterval) {
+       proceduralSpawnTimer = 0;
+       proceduralSpawnInterval = Math.max(60, 120 - gameSpeed * 5) + Math.floor(Math.random() * 40);
+       spawnProceduralObstacle();
+     }
+   }
 
   // Beat timer for music
   beatTimer++;

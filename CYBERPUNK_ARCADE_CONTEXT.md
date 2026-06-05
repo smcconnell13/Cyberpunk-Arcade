@@ -108,11 +108,13 @@ Games use varied aspect ratios depending on genre:
 | 4 | **CYBERPUNK Trivia** | Knowledge quiz | Overlay UI | Answer cyberpunk-themed questions under pressure | — |
 | 5 | **Canyon Runner** | Endless runner | ? | Obstacle avoidance | — |
 | 6 | **Missile Command** | Classic arcade shooter | ? | Target defense, strategic placement | — |
-| 7 | **Downdown** | Falling object catcher | ? | Catch/dodge falling items | — |
+| 7 | **Falldown** | Falling object catcher | ? | Catch/dodge falling items | — |
 | 8 | **Tetris** | Block puzzle | Standard | Piece rotation, line clearing | — |
-| 9 | **Psychedelic Winamp Visualizer** | Audio visualizer | ? | Music-reactive graphics | — |
-| 10 | **Spiral Visualization** | Abstract art | ? | Mathematical path rendering | — |
+| 9 | **Neon Brickout** | Brick breaker | Landscape | Paddle control, ball physics, neon power-ups | — |
+| 10 | **Gridwar** | Tactical combat | Landscape | Strategic grid-based combat | — |
 | 11 | **NEON OVERDRIVE // 2087** | Two-player racing | Landscape (fullscreen) | Drift physics, lap timing, collision | Cyan vs Magenta |
+| 12 | **CYBER RACE** | Two-player racing | Top-down fullscreen | Track boundaries, lap counting, time trial | Cyan vs Magenta |
+| 13 | **Cyber Dash** | Endless runner | Landscape 800x500 | Lane-switching, obstacle avoidance | Cyan frame, navy field |
 
 ### Common Game Patterns
 
@@ -145,12 +147,15 @@ Most arcade games in this collection follow one of these structural templates:
 
 5. TWO-PLAYER RACING
    - Fullscreen canvas, shared keyboard for 2 players
-   - Track defined as array of waypoints (parametric curves)
-   - Drift/slide physics model for arcade-feel handling
-   - Lap tracking via waypoint progression
-   - Neon edge rendering with glow effects
+   - Track defined as array of waypoints (parametric curves via Catmull-Rom spline)
+   - Arcade-feel physics: acceleration, braking, drift/slide on curves
+   - Lap tracking via waypoint progression with checkpoint validation (prevents cheating by crossing finish line backwards)
+   - Neon edge rendering with glow effects (dual-curb system: magenta outer, cyan inner)
+   - Off-track penalty: speed capped to ~25% of normal
+   - Car-to-car collision with spark particles
    - Minimap overlay for track overview
-   - Examples: NEON OVERDRIVE
+   - Time trial mode: single-player, 5-lap record with localStorage best times
+   - Examples: NEON OVERDRIVE, CYBER RACE
 ```
 
 ---
@@ -267,7 +272,7 @@ When asked to generate a new game, consider these themes and mechanics that fit 
 - **Synth DJ:** Rhythm game — hit notes to the beat
 - **Corp Infiltrator:** Stealth game — avoid security cameras and guards
 - **Memory Hack:** Simon-says pattern memory game with cyber theme
-- **Drift King:** Two-player racing — slide through neon curves, first to N laps wins
+- **Drift King:** Two-player racing — slide through neon curves, first to N laps wins (see: NEON OVERDRIVE, CYBER RACE)
 - **Neon Drift:** Drift-scored racing — points awarded for slide angle, not just speed
 
 ### Mechanics That Fit Well
@@ -362,6 +367,6 @@ When creating a new game, use this as the base structure:
 
 ---
 
-*Last updated: 2026-05-30*
-*Latest addition: NEON OVERDRIVE // 2087 — two-player drift racing on parametric oval circuit*
+*Last updated: 2026-06-05*
+*Latest additions: NEON OVERDRIVE // 2087 — two-player drift racing on parametric oval circuit; CYBER RACE — top-down circuit racing with two-player versus and time trial modes*
 *This document serves as the authoritative context for the CYBERPUNK ARCADE project. Any new game development should reference this document for aesthetic, technical, and design guidance.*
