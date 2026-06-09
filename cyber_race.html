@@ -155,28 +155,28 @@ resize();
 // ============================================================
 // TRACK DEFINITION
 // ============================================================
-const ROAD_WIDTH = 72;
+const ROAD_WIDTH = 90;
 
 // Waypoints: a nice circuit shape (closed loop)
 const TRACK_WAYPOINTS = [
-  [ 0,   -200],
-  [ 180, -200],
-  [ 320, -160],
-  [ 420,  -60],
-  [ 420,   40],
-  [ 380,  140],
-  [ 280,  220],
-  [ 140,  260],
-  [   0,  260],
-  [-140,  220],
-  [-260,  140],
-  [-380,   40],
-  [-420,  -60],
-  [-420, -160],
-  [-340, -240],
-  [-200, -280],
-  [ -60, -280],
-  [  40, -240],
+  { x: 0,   y: -200},
+  { x: 180, y: -200},
+  { x: 320, y: -160},
+  { x: 420, y: -60},
+  { x: 420, y: 40},
+  { x: 380, y: 140},
+  { x: 280, y: 220},
+  { x: 140, y: 260},
+  { x: 0,   y: 260},
+  { x: -140, y: 220},
+  { x: -260, y: 140},
+  { x: -380, y: 40},
+  { x: -420, y: -60},
+  { x: -420, y: -160},
+  { x: -340, y: -240},
+  { x: -200, y: -280},
+  { x: -60, y: -280},
+  { x: 40, y: -240},
 ];
 
 function catmullRom(p0, p1, p2, p3, t) {
@@ -198,10 +198,12 @@ function generateSmoothTrack() {
     const p1 = pts[i];
     const p2 = pts[(i + 1) % n];
     const p3 = pts[(i + 2) % n];
-    for (let t = 0; t <= 1; t += 1 / segments) {
-      smooth.push(catmullRom(p0, p1, p2, p3, Math.min(t, 1)));
+    for (let t = 0; t < 1; t += 1 / segments) {
+      smooth.push(catmullRom(p0, p1, p2, p3, t));
     }
   }
+  // Add the final point to close the loop
+  smooth.push(catmullRom(pts[(n - 1 + n) % n], pts[n - 1], pts[0], pts[1], 1));
   return smooth;
 }
 
@@ -237,23 +239,11 @@ for (const p of TRACK) {
 const trackW = trackMaxX - trackMinX;
 const trackH = trackMaxY - trackMinY;
 
-// Find nearest track point using binary search on cumulative distance
-// Then refine with local search
+// Find nearest track point: iterate all segments
 function findNearestTrackPoint(px, py) {
-  // Rough estimate based on angle from center
-  const cx = (trackMinX + trackMaxX) / 2;
-  const cy = (trackMinY + trackMaxY) / 2;
-  const angle = Math.atan2(py - cy, px - cx);
-  // Map angle to approximate index
-  const rough = Math.floor(((angle + Math.PI) / (2 * Math.PI)) * TRACK_LEN) % TRACK_LEN;
-  // Search nearby indices
-  const searchRange = 8;
   let bestDist = Infinity, bestIdx = 0, bestT = 0;
-
-  for (let offset = -searchRange; offset <= searchRange; offset++) {
-    const i = ((rough + offset) % TRACK_LEN + TRACK_LEN) % TRACK_LEN;
+  for (let i = 0; i < TRACK_LEN; i++) {
     const ni = (i + 1) % TRACK_LEN;
-    // Project point onto segment
     const sx = TRACK[ni].x - TRACK[i].x;
     const sy = TRACK[ni].y - TRACK[i].y;
     const segLen = trackSegLen[i];
@@ -335,9 +325,9 @@ class Car {
     this.y = startY;
     this.angle = angle;
     this.speed = 0;
-    this.maxSpeed = 7.0;
-    this.offTrackMaxSpeed = 1.8;
-    this.accel = 0.14;
+    this.maxSpeed = 8.5;
+    this.offTrackMaxSpeed = 2.5;
+    this.accel = 0.28;
     this.brake = 0.18;
     this.friction = 0.015;
     this.turnSpeed = 0.042;
@@ -348,6 +338,10 @@ class Car {
     this.trail = [];
     this.driftAmount = 0;
     this.prevNearestIdx = -1;
+    this.wasFar = false;
+    this.lapCounted = false;
+    this._prevX = this.x;
+    this._crossed = false;
     this.lapNotice = 0; // countdown for lap notification text
   }
 
@@ -365,7 +359,6 @@ class Car {
     }
 
     const nearest = findNearestTrackPoint(this.x, this.y);
-    this.isOnTrack = nearest.dist < ROAD_WIDTH / 2;
     this.nearestIdx = nearest.idx;
 
     const effectiveMax = this.isOnTrack ? this.maxSpeed : this.offTrackMaxSpeed;
@@ -421,31 +414,81 @@ class Car {
     this.checkpointLogic(nearest.idx);
 
     if (this.lapNotice > 0) this.lapNotice -= dt;
+
+    // Periodic debug log (every 120 frames)
+    this._frameCount = (this._frameCount || 0) + 1;
+    if (this._frameCount % 120 === 0) {
+      const name = this.isP2 ? 'P2' : 'P1';
+      console.log(`[LAP][${name}] frame=${this._frameCount} idx=${this.nearestIdx ?? '?'} distToStart=${this.nearestIdx !== undefined ? Math.min(Math.abs(this.nearestIdx - 0), TRACK_LEN - Math.abs(this.nearestIdx - 0)).toFixed(1) : '?'} wasFar=${this.wasFar} lapCounted=${this.lapCounted} cps=${this.checkpoints} laps=${this.laps}`);
+    }
   }
 
   checkpointLogic(currentIdx) {
-    // Determine total distance traveled around track
-    // We track the previous index and look at direction
     if (this.prevNearestIdx === -1) {
       this.prevNearestIdx = currentIdx;
+      this.wasFar = false;
+      // First frame: record initial x and side for crossing detection
+      this._prevX = this.x;
+      this._crossed = false;
       return;
     }
 
-    // Check if we crossed the start line (index near 0)
-    const distToStart = Math.min(Math.abs(currentIdx - 0), TRACK_LEN - Math.abs(currentIdx - 0));
-    const prevDistToStart = Math.min(Math.abs(this.prevNearestIdx - 0), TRACK_LEN - Math.abs(this.prevNearestIdx - 0));
+    // --- Position-based lap detection ---
+    // The finish line is at x=0, perpendicular to the track direction.
+    // A lap is completed when the car crosses from x<0 to x>0
+    // (left-to-right) while driving forward.
+    const prevSide = Math.sign(this._prevX || 0);
+    const curSide = Math.sign(this.x);
 
-    // Track direction: if we were far from start and now near start, we completed a lap
-    if (distToStart < 10 && prevDistToStart > TRACK_LEN * 0.15) {
-      // Must have passed checkpoints
-      if (this.checkpoints >= 3) {
+    // Crossing from left to right = forward lap completion
+    if (prevSide < 0 && curSide > 0 && !this._crossed) {
+      this._crossed = true;
+      const name = this.isP2 ? 'P2' : 'P1';
+      console.log(`[LAP] ${name} crossed start line at x=${this.x.toFixed(1)} y=${this.y.toFixed(1)} (prevX=${this._prevX.toFixed(1)})`);
+
+      // Must have been around the track (wasFar) and passed checkpoints
+      if (this.wasFar && this.checkpoints >= 3) {
         this.laps++;
         this.checkpoints = 0;
-        this.lapNotice = 90; // show for ~1.5 seconds at 60fps
+        this.lapNotice = 90;
+        this.lapCounted = true;
+        this._crossed = false; // reset so next lap can be counted
+        const name = this.isP2 ? 'P2' : 'P1';
+        console.log(`[LAP] ${name} LAP ${this.laps} COMPLETE! idx=${currentIdx} checkpoints=${this.checkpoints}`);
+      } else {
+        const name = this.isP2 ? 'P2' : 'P1';
+        console.log(`[LAP] ${name} lap NOT counted: wasFar=${this.wasFar} cps=${this.checkpoints}/3`);
       }
     }
 
-    // Check checkpoints
+    // When car goes back to the left side, reset crossing flag
+    if (prevSide > 0 && curSide <= 0) {
+      this._crossed = false;
+    }
+
+    this._prevX = this.x;
+
+    // --- Track-index-based state (for reference / fallback) ---
+    const distToStart = Math.min(Math.abs(currentIdx - 0), TRACK_LEN - Math.abs(currentIdx - 0));
+
+    // Reset "was_far" only when car is AT the start line (indices 0-2).
+    if (distToStart <= 2) {
+      if (this.wasFar) {
+        const name = this.isP2 ? 'P2' : 'P1';
+        console.log(`[LAP] ${name} wasFar reset at start (idx=${currentIdx})`);
+      }
+      this.wasFar = false;
+    }
+
+    // Once the car enters the far zone, mark it and never clear it
+    // until a lap is counted.
+    if (distToStart > TRACK_LEN * 0.15 && !this.wasFar) {
+      this.wasFar = true;
+      const name = this.isP2 ? 'P2' : 'P1';
+      console.log(`[LAP] ${name} entered FAR zone (idx=${currentIdx})`);
+    }
+
+    // Checkpoints
     const checkpoints = [cpIdx25, cpIdx50, cpIdx75];
     for (let i = 0; i < checkpoints.length; i++) {
       const cIdx = checkpoints[i];
@@ -674,30 +717,31 @@ function renderTrack(camX, camY, camScale) {
   const fAngle = Math.atan2(fP1.y - fP.y, fP1.x - fP.x);
   const fsx = (fP.x - camX) * camScale + W/2;
   const fsy = (fP.y - camY) * camScale + H/2;
-  const ch = 5 * camScale;
-  const nc = Math.floor(ROAD_WIDTH / (ch * 2));
+  // 8 contiguous cells across the road width
+  const ch = ROAD_WIDTH / 8;
+  const nc = 4; // rows from -nc to 3 = 8 rows
 
   ctx.save();
   ctx.translate(fsx, fsy);
   ctx.rotate(fAngle + Math.PI/2);
 
-  for (let row = -nc; row < nc; row++) {
+  for (let row = -nc; row < 4; row++) {
     for (let col = 0; col < 2; col++) {
-      const cx2 = row * ch * 2;
+      const cx2 = row * ch;
       const cy2 = col * ch - ch;
-      ctx.fillStyle = (row + col) % 2 === 0 ? '#fff' : '#111';
-      ctx.fillRect(cx2 - ch/2, cy2 - ch/2, ch, ch);
+      ctx.fillStyle = (row + col) % 2 === 0 ? '#ffffff' : '#1a1a2e';
+      ctx.fillRect(cx2 - ch/2, cy2 - ch/2, ch - 1, ch - 1);
     }
   }
 
-  // "START" text
+  // "START / FINISH" text above the line
   ctx.rotate(-(fAngle + Math.PI/2));
   ctx.fillStyle = '#ff0';
   ctx.shadowColor = '#ff0';
-  ctx.shadowBlur = 8;
-  ctx.font = `bold ${11 * camScale}px 'Courier New', monospace`;
+  ctx.shadowBlur = 12;
+  ctx.font = `bold ${Math.max(12, 14 * camScale)}px 'Courier New', monospace`;
   ctx.textAlign = 'center';
-  ctx.fillText('START / FINISH', 0, -ROAD_WIDTH/2 - 12*camScale);
+  ctx.fillText('START / FINISH', 0, -ROAD_WIDTH/2 - 18*camScale);
   ctx.shadowBlur = 0;
   ctx.restore();
 }
@@ -820,6 +864,22 @@ function drawHUD(p1, p2, mode) {
       ctx.fillText(`⚠ ${warnings.join(' & ')} OFF TRACK ⚠`, W/2, H - 30);
     }
     ctx.shadowBlur = 0;
+  }
+
+  // --- DEBUG: Lap detection state (bottom-left, only in race) ---
+  const dbg = gameMode === MODE.RACING || gameMode === MODE.TIME_TRIAL;
+  if (dbg) {
+    const dbgy = H - 100;
+    ctx.font = `${fs * 0.6}px 'Courier New', monospace`;
+    ctx.textAlign = 'left';
+    ctx.shadowBlur = 0;
+
+    ctx.fillStyle = '#00ffff';
+    ctx.fillText(`P1: x=${p1.x.toFixed(0)} y=${p1.y.toFixed(0)} wasFar=${p1.wasFar} crossed=${p1._crossed} cps=${p1.checkpoints} laps=${p1.laps}`, pad, dbgy);
+    ctx.fillStyle = '#ff00ff';
+    ctx.fillText(`P2: x=${p2.x.toFixed(0)} y=${p2.y.toFixed(0)} wasFar=${p2.wasFar} crossed=${p2._crossed} cps=${p2.checkpoints} laps=${p2.laps}`, pad, dbgy + fs);
+    ctx.fillStyle = '#888';
+    ctx.fillText(`TRACK_LEN=${TRACK_LEN} (idx wrap: 0↔${TRACK_LEN-1})`, pad, dbgy + fs * 2);
   }
 }
 
@@ -1042,8 +1102,25 @@ function gameLoop(timestamp) {
       if (p1.lapNotice > 0) p1.lapNotice -= dt;
       if (p2.lapNotice > 0) p2.lapNotice -= dt;
 
+      // Check if a car has completed enough laps
+      if (gameMode === MODE.RACING) {
+        if (p1.laps >= raceLaps && !p1.finished) {
+          p1.finished = true;
+          p1.finishTime = performance.now() - raceStartTime;
+        }
+        if (p2.laps >= raceLaps && !p2.finished) {
+          p2.finished = true;
+          p2.finishTime = performance.now() - raceStartTime;
+        }
+      } else if (gameMode === MODE.TIME_TRIAL) {
+        if (p1.laps >= ttLaps && !p1.finished) {
+          p1.finished = true;
+          p1.finishTime = performance.now() - raceStartTime;
+        }
+      }
+
       // Check race end
-      if (gameMode === MODE.RACING && p1.finished && p2.finished) {
+      if (gameMode === MODE.RACING && (p1.finished || p2.finished)) {
         showRaceFinished();
       } else if (gameMode === MODE.TIME_TRIAL && p1.finished) {
         showTTResult();
