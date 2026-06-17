@@ -527,6 +527,33 @@
     text-shadow: 0 0 6px #ff0, 0 2px 4px rgba(0,0,0,0.8);
   }
 
+  .new-badge {
+    position: absolute;
+    top: -6px;
+    right: -6px;
+    z-index: 20;
+    padding: 3px 10px;
+    background: linear-gradient(135deg, #0ff, #0f0);
+    border: 2px solid #fff;
+    border-radius: 10px;
+    box-shadow: 0 0 12px #0ff, 0 0 24px rgba(0,255,255,0.4);
+    pointer-events: none;
+    animation: new-pulse 2s ease-in-out infinite;
+  }
+  .new-badge span {
+    font-family: 'Orbitron', sans-serif;
+    font-size: 9px;
+    font-weight: 900;
+    color: #000;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    text-shadow: 0 0 3px rgba(0,255,255,0.6);
+  }
+  @keyframes new-pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.12); }
+  }
+
   /* Responsive */
   @media (max-width: 640px) {
     .arcade-floor {
@@ -766,6 +793,13 @@ const GAME_MANIFEST = [
     description: "Strategic grid-based tactical combat simulation"
   },
   {
+    file: "cyber_devourer.html",
+    name: "Cyber Devourer",
+    icon: "\ud83c\udf65",
+    description: "Devour data streams in the neon grid, evade ICE Sentinels",
+    isNew: true
+  },
+  {
     file: "tetris.html",
     name: "Neon Tetris",
     icon: "\ud83e\uddf1",
@@ -855,18 +889,6 @@ const GAME_MANIFEST = [
     icon: "\ud83c\udfce\ufe0f",
     description: "Two-player top-down racing on a neon circuit"
   },
-  {
-    file: "cyber_maze.html",
-    name: "Cyber Maze",
-    icon: "\ud83d\udd2e",
-    description: "Navigate the neon maze, consume data packets, hack the ICE guardians"
-  },
-  {
-    file: "cyber_devourer.html",
-    name: "Cyber Devourer",
-    icon: "\ud83c\udf65",
-    description: "Devour data streams in the neon grid, evade ICE Sentinels"
-  }
 ];
 
 // ============================================================
