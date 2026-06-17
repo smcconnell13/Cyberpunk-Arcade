@@ -1,0 +1,1244 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>NEON DEVOURER // Data Stream Protocol</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=Orbitron:wght@400;700;900&family=Share+Tech+Mono&display=swap');
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #050510;
+    display: flex; justify-content: center; align-items: center;
+    min-height: 100vh; font-family: 'Share Tech Mono', monospace;
+    color: #e0e0ff; overflow: hidden; user-select: none;
+  }
+  body::before {
+    content: ''; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: linear-gradient(rgba(0,255,255,0.01) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0,255,255,0.01) 1px, transparent 1px);
+    background-size: 32px 32px; pointer-events: none; z-index: 0;
+  }
+  body::after {
+    content: ''; position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+    background: repeating-linear-gradient(0deg, transparent, transparent 2px, rgba(0,0,0,0.07) 2px, rgba(0,0,0,0.07) 4px);
+    pointer-events: none; z-index: 100;
+  }
+  #game-wrapper { position: relative; display: flex; flex-direction: column; align-items: center; gap: 6px; z-index: 1; }
+  #top-bar { display: flex; justify-content: space-between; width: 540px; padding: 6px 2px; font-family: 'Orbitron', sans-serif; }
+  .hud-block { text-align: center; min-width: 80px; }
+  .hud-label { font-size: 7px; letter-spacing: 0.15em; color: rgba(255,255,255,0.25); text-transform: uppercase; }
+  .hud-value { font-size: 18px; font-weight: 900; }
+  .score-val { color: #0ff; text-shadow: 0 0 8px rgba(0,255,255,0.5); }
+  .level-val { color: #ff0; text-shadow: 0 0 8px rgba(255,255,0,0.5); }
+  .lives-val { color: #f44; text-shadow: 0 0 8px rgba(255,68,68,0.5); }
+  .high-val { color: #f0f; text-shadow: 0 0 8px rgba(255,0,255,0.5); }
+  #game-container {
+    position: relative; border: 1px solid rgba(0,255,255,0.12);
+    box-shadow: 0 0 40px rgba(0,255,255,0.06), inset 0 0 30px rgba(0,0,0,0.5); border-radius: 2px;
+  }
+  canvas { display: block; }
+  #menu-screen {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    display: flex; flex-direction: column; justify-content: center; align-items: center;
+    background: rgba(5,5,15,0.94); z-index: 50; pointer-events: auto;
+  }
+  #menu-screen.hidden { display: none; }
+  .menu-title {
+    font-family: 'Orbitron', sans-serif; font-size: 36px; font-weight: 900;
+    letter-spacing: 0.1em; margin-bottom: 2px;
+    background: linear-gradient(90deg, #ff0, #f80, #f44, #f0f);
+    -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;
+    filter: drop-shadow(0 0 16px rgba(255,136,0,0.4));
+    animation: titleGlow 3s ease-in-out infinite alternate;
+  }
+  @keyframes titleGlow {
+    0% { filter: drop-shadow(0 0 16px rgba(255,136,0,0.4)); }
+    100% { filter: drop-shadow(0 0 28px rgba(255,68,68,0.6)) drop-shadow(0 0 50px rgba(255,0,255,0.3)); }
+  }
+  .menu-subtitle { font-size: 10px; color: rgba(255,200,0,0.4); letter-spacing: 0.5em; text-transform: uppercase; margin-bottom: 28px; }
+  .menu-lore { font-size: 10px; color: rgba(255,255,255,0.25); max-width: 380px; text-align: center; line-height: 1.6; margin-bottom: 24px; }
+  .menu-controls { display: flex; gap: 40px; margin-bottom: 24px; }
+  .control-section h3 { font-family: 'Orbitron', sans-serif; font-size: 11px; color: #ff0; letter-spacing: 0.15em; margin-bottom: 8px; }
+  .keys-display { display: flex; flex-direction: column; align-items: center; gap: 3px; }
+  .key-row { display: flex; gap: 3px; }
+  .key { width: 28px; height: 28px; display: flex; align-items: center; justify-content: center; font-family: 'Orbitron', sans-serif; font-size: 11px; border: 1px solid rgba(255,200,0,0.2); background: rgba(255,200,0,0.04); color: rgba(255,255,255,0.5); border-radius: 3px; }
+  .start-prompt { font-family: 'Orbitron', sans-serif; font-size: 13px; color: rgba(255,200,0,0.6); letter-spacing: 0.3em; animation: pulse 1.8s ease-in-out infinite; }
+  @keyframes pulse { 0%,100% { opacity: 0.35; } 50% { opacity: 1; } }
+  #gameover-screen {
+    position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+    display: none; flex-direction: column; justify-content: center; align-items: center;
+    background: rgba(5,5,15,0.94); z-index: 50; pointer-events: auto;
+  }
+  #gameover-screen.visible { display: flex; }
+  .gameover-title { font-family: 'Orbitron', sans-serif; font-size: 32px; font-weight: 900; color: #f44; text-shadow: 0 0 16px rgba(255,68,68,0.5); letter-spacing: 0.15em; margin-bottom: 8px; }
+  .gameover-sub { font-size: 11px; color: rgba(255,255,255,0.25); letter-spacing: 0.2em; margin-bottom: 24px; }
+  .final-score { font-family: 'Orbitron', sans-serif; font-size: 44px; font-weight: 900; color: #ff0; text-shadow: 0 0 16px rgba(255,200,0,0.5); margin-bottom: 6px; }
+  .final-label { font-size: 9px; color: rgba(255,255,255,0.25); letter-spacing: 0.2em; margin-bottom: 28px; }
+  .restart-prompt { font-family: 'Orbitron', sans-serif; font-size: 12px; color: rgba(255,200,0,0.4); letter-spacing: 0.3em; animation: pulse 1.8s ease-in-out infinite; }
+  #pause-indicator { position: absolute; top: 50%; left: 50%; transform: translate(-50%,-50%); font-family: 'Orbitron', sans-serif; font-size: 22px; color: rgba(255,255,0,0.7); text-shadow: 0 0 16px rgba(255,255,0,0.4); letter-spacing: 0.3em; z-index: 30; display: none; pointer-events: none; }
+  #ghost-status { position: absolute; bottom: 6px; left: 50%; transform: translateX(-50%); display: flex; gap: 8px; z-index: 20; pointer-events: none; font-size: 14px; }
+  .gs-indicator { width: 16px; height: 16px; border-radius: 50%; border: 2px solid rgba(255,255,255,0.2); transition: all 0.3s; }
+  #arcade-back-link { position: fixed; top: 12px; left: 12px; padding: 8px 16px; color: rgba(0,255,255,0.6); text-decoration: none; font-family: 'Courier New', monospace; font-size: 12px; letter-spacing: 0.15em; border: 1px solid rgba(0,255,255,0.3); border-radius: 3px; background: rgba(0,0,20,0.7); backdrop-filter: blur(4px); transition: all 0.25s ease; z-index: 9999; pointer-events: auto; }
+  #arcade-back-link:hover { color: #0ff; border-color: #0ff; box-shadow: 0 0 15px rgba(0,255,255,0.3), inset 0 0 15px rgba(0,0,20,0.1); background: rgba(0,255,255,0.08); }
+</style>
+</head>
+<body>
+<a href="arcade.html" id="arcade-back-link">&lt;&lt; BACK TO ARCADE</a>
+
+<div id="game-wrapper">
+  <div id="top-bar">
+    <div class="hud-block"><div class="hud-label">Score</div><div class="hud-value score-val" id="score-display">0</div></div>
+    <div class="hud-block"><div class="hud-label">Level</div><div class="hud-value level-val" id="level-display">1</div></div>
+    <div class="hud-block"><div class="hud-label">Eat Chain</div><div class="hud-value high-val" id="chain-display">&nbsp;</div></div>
+    <div class="hud-block"><div class="hud-label">Lives</div><div class="hud-value lives-val" id="lives-display"></div></div>
+    <div class="hud-block"><div class="hud-label">High Score</div><div class="hud-value high-val" id="high-display">0</div></div>
+  </div>
+
+  <div id="game-container">
+    <canvas id="gc" width="540" height="660"></canvas>
+
+    <div id="menu-screen">
+      <div class="menu-title">NEON DEVOURER</div>
+      <div class="menu-subtitle">// Data Stream Protocol v3.7</div>
+      <div class="menu-lore">
+        Year 2099. You are DEV-X, a data-harvesting AI fragment<br>
+        consuming corrupted packets in the neon grid of Sector 7G.<br>
+        Four ICE Sentinels patrol the Mainframe — absorb POWER CORES<br>
+        to turn them against their own network. Clear all data or die trying.
+      </div>
+      <div class="menu-controls">
+        <div class="control-section">
+          <h3>DATAPATH</h3>
+          <div class="keys-display">
+            <div class="key-row"><div class="key">↑</div></div>
+            <div class="key-row"><div class="key">←</div><div class="key">↓</div><div class="key">→</div></div>
+          </div>
+        </div>
+        <div class="control-section">
+          <h3>SYSTEM</h3>
+          <div class="keys-display">
+            <div class="key-row"><div class="key">P</div></div>
+            <div style="font-size:9px;color:rgba(255,255,255,0.2);margin-top:2px;">PAUSE</div>
+          </div>
+        </div>
+      </div>
+      <div class="start-prompt">PRESS ENTER TO JACK IN</div>
+    </div>
+
+    <div id="gameover-screen">
+      <div class="gameover-title">SYSTEM PURGED</div>
+      <div class="gameover-sub">DEV-X TERMINATED BY ICE NETWORK</div>
+      <div class="final-score" id="final-score">0</div>
+      <div class="final-label">FINAL SCORE</div>
+      <div class="restart-prompt">PRESS ENTER TO REBOOT</div>
+    </div>
+
+    <div id="pause-indicator">⬡ PAUSED ⬡</div>
+    <div id="ghost-status"></div>
+  </div>
+</div>
+
+<script>
+// ============================================================
+// NEON DEVOURER — Data Stream Protocol
+// Cyberpunk Pac-Man adaptation
+// ============================================================
+
+const canvas = document.getElementById('gc');
+const ctx = canvas.getContext('2d');
+const W = canvas.width, H = canvas.height;
+
+const COLS = 19, ROWS = 23;
+const CELL = 28;
+const OFF_X = (W - COLS * CELL) / 2;
+const OFF_Y = (H - ROWS * CELL) / 2;
+
+// Tile types
+const T = { EMPTY:0, WALL:1, DOT:2, POWER:3, GHOUSE:4, DOOR:5 };
+
+/* Maze — unique layout for Cyber Devourer.
+   Ghost house: cols 8-10, rows 11-13. Door at (9,11).
+   Tunnel passages: row 14, cols 0 and 18. */
+const MAZE = [
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+  [1,3,2,2,2,2,2,2,2,1,2,2,2,2,2,2,2,3,1],
+  [1,2,1,1,2,1,1,1,2,1,2,1,1,1,2,1,1,2,1],
+  [1,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,1],
+  [1,2,1,1,2,1,2,1,1,1,1,1,2,1,2,1,1,2,1],
+  [1,2,2,2,2,1,2,2,2,1,2,2,2,1,2,2,2,2,1],
+  [0,0,0,0,2,1,1,1,0,1,0,1,1,1,2,0,0,0,0],
+  [0,0,0,1,2,1,0,0,0,0,0,0,0,1,2,1,0,0,0],
+  [0,0,0,0,2,1,0,1,1,5,1,1,0,1,2,0,0,0,0],
+  [1,2,2,2,2,0,0,1,4,4,4,1,0,0,2,2,2,2,1],
+  [1,2,1,1,2,1,0,1,4,4,4,1,0,1,2,1,1,2,1],
+  [1,3,2,1,2,1,0,1,1,1,1,1,0,1,2,1,2,3,1],
+  [1,2,2,2,2,0,0,0,0,0,0,0,0,0,2,2,2,2,1],
+  [1,1,1,1,2,0,1,0,1,1,1,0,1,0,2,1,1,1,1],
+  [0,0,0,0,2,0,1,0,0,0,0,0,1,0,2,0,0,0,0],
+  [1,1,1,1,2,0,1,0,1,1,1,0,1,0,2,1,1,1,1],
+  [1,2,2,2,2,2,2,2,2,1,2,2,2,2,2,2,2,2,1],
+  [1,2,1,1,2,1,1,1,2,1,2,1,1,1,2,1,1,2,1],
+  [1,3,2,2,2,2,2,2,2,2,2,2,2,2,2,2,2,3,1],
+  [1,2,2,2,2,1,2,2,2,1,2,2,2,1,2,2,2,2,1],
+  [1,2,1,1,2,1,1,1,2,1,2,1,1,1,2,1,1,2,1],
+  [1,3,2,2,2,2,2,2,2,1,2,2,2,2,2,2,2,3,1],
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+];
+
+const GH = {c:9, r:12}; // Ghost house center
+let maze, dotsLeft, totalDots;
+let gameState = 'menu';
+let score = 0, hiScore = +(localStorage.getItem('ndHi')||0);
+let lives = 3, level = 1;
+let eatChain = 0, chainTmr = 0;
+let frightTmr = 0, frightDur = 420; // frames of vulnerability
+let fc = 0; // frame counter
+
+// Player (DEV-X)
+const player = {
+  gx:6, gy:14, dir:{x:0,y:0}, nxt:{x:0,y:0},
+  spd:0.09, alive:true, dt:0, inv:90, mouth:0, mouthDir:1,
+  angle: 0, // rotation angle for visual
+};
+
+// Ghost definitions — names, colors, scatter corners, start positions, shape type
+const GHOST_DEFS = [
+  { name:'CHASER',   color:'#f44', scatter:{c:1, r:1},   startOff:{dx:0,dy:-2}, shape:'diamond' },
+  { name:'AMBUSER',  color:'#f80', scatter:{c:17,r:1},   startOff:{dx:0,dy:0},  shape:'cross' },
+  { name:'SPIKER',   color:'#0ff', scatter:{c:1, r:21},  startOff:{dx:-1,dy:0}, shape:'triangle' },
+  { name:'BOGER',    color:'#f0f', scatter:{c:17,r:21},  startOff:{dx:1,dy:0},  shape:'hex' },
+];
+
+let ghosts = [];
+let modeTmr = 0, modeIdx = 0;
+const MODESCHED = [
+  ['scatter',360],['chase',1080],['scatter',360],['chase',1080],
+  ['scatter',240],['chase',1080],['scatter',240],['chase',99999],
+];
+
+let parts = [];
+let popups = []; // score popups
+
+// ---- Audio (Web Audio API) ----
+let actx = null;
+function initAudio(){ if(!actx) actx=new(window.AudioContext||window.webkitAudioContext)(); }
+function snd(type){
+  if(!actx) return;
+  const o=actx.createOscillator(), g=actx.createGain();
+  o.connect(g); g.connect(actx.destination);
+  const t=actx.currentTime;
+  switch(type){
+    case 'm': // munch (every other frame while moving)
+      o.type='triangle'; o.frequency.setValueAtTime(200+Math.random()*60,t);
+      o.frequency.exponentialRampToValueAtTime(80,t+.04);
+      g.gain.setValueAtTime(.03,t); g.gain.exponentialRampToValueAtTime(.001,t+.04);
+      o.start(t); o.stop(t+.04); break;
+    case 'p': // power core
+      o.type='sine'; o.frequency.setValueAtTime(350,t);
+      o.frequency.exponentialRampToValueAtTime(1400,t+.25);
+      g.gain.setValueAtTime(.07,t); g.gain.exponentialRampToValueAtTime(.001,t+.3);
+      o.start(t); o.stop(t+.3); break;
+     case 'e': { // eat ghost — 303-style acid saw, pitched up and brighter
+      const osc=actx.createOscillator(), g=actx.createGain();
+      const lp=actx.createBiquadFilter();
+      const shp=actx.createWaveShaper();
+      const amt=100, c=new Float32Array(amt);
+      for(let i=0;i<amt;i++){const x=i*2/amt-1;c[i]=((1+amt)*x)/((amt-1)+Math.abs(x));}
+      shp.curve=c; shp.oversample='none';
+      osc.type='sawtooth';
+      osc.frequency.setValueAtTime(180,t);
+      osc.frequency.exponentialRampToValueAtTime(900,t+.35);
+      lp.type='lowpass';
+      lp.frequency.setValueAtTime(1200,t);
+      lp.frequency.exponentialRampToValueAtTime(60,t+.35);
+      lp.Q.setValueAtTime(18,t);
+      g.gain.setValueAtTime(.12,t);
+      g.gain.exponentialRampToValueAtTime(.001,t+.35);
+      osc.disconnect();
+      osc.connect(lp);
+      lp.connect(shp);
+      shp.connect(g);
+      g.connect(actx.destination);
+      osc.start(t); osc.stop(t+.35); break;
+   }
+    case 'd': { // die — resonant 303 acid saw + distortion
+      const osc=actx.createOscillator(), g=actx.createGain();
+      const lp=actx.createBiquadFilter();
+      const shp=actx.createWaveShaper();
+      const amt=100, c=new Float32Array(amt);
+      for(let i=0;i<amt;i++){const x=i*2/amt-1;c[i]=((1+amt)*x)/((amt-1)+Math.abs(x));}
+      shp.curve=c; shp.oversample='none';
+      osc.type='sawtooth';
+      osc.frequency.setValueAtTime(440,t);
+      osc.frequency.exponentialRampToValueAtTime(25,t+.8);
+      lp.type='lowpass';
+      lp.frequency.setValueAtTime(3000,t);
+      lp.frequency.exponentialRampToValueAtTime(60,t+.8);
+      lp.Q.setValueAtTime(22,t);
+      g.gain.setValueAtTime(.12,t);
+      g.gain.exponentialRampToValueAtTime(.001,t+.8);
+      osc.disconnect();
+      osc.connect(lp);
+      lp.connect(shp);
+      shp.connect(g);
+      g.connect(actx.destination);
+      osc.start(t); osc.stop(t+.8); break;
+   }
+    case 'g': // ghost eaten flash
+      o.type='square'; [900,1100,1300].forEach((f,i)=>o.frequency.setValueAtTime(f,t+i*.05));
+      g.gain.setValueAtTime(.06,t); g.gain.exponentialRampToValueAtTime(.001,t+.25);
+      o.start(t); o.stop(t+.25); break;
+    case 'l': // level clear
+      o.type='sine'; [523,659,784,1047].forEach((f,i)=>o.frequency.setValueAtTime(f,t+i*.1));
+      g.gain.setValueAtTime(.06,t); g.gain.exponentialRampToValueAtTime(.001,t+.5);
+      o.start(t); o.stop(t+.5); break;
+  }
+}
+
+// ---- Maze init ----
+function resetMaze(){
+  maze = MAZE.map(r=>[...r]);
+  totalDots=0;
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++)
+    if(maze[r][c]===T.DOT||maze[r][c]===T.POWER) totalDots++;
+  dotsLeft = totalDots;
+}
+
+// ---- Player reset ----
+function resetPlayer(){
+  player.gx=6; player.gy=14; player.dir={x:0,y:0}; player.nxt={x:0,y:0};
+  player.alive=true; player.dt=60; player.inv=90;
+  player.angle = 0;
+}
+
+// ---- Ghost init ----
+function resetGhosts(){
+  ghosts = GHOST_DEFS.map((g,i)=>({
+    ...g, i,
+    gx:GH.c+g.startOff.dx, gy:GH.r+g.startOff.dy,
+    x: GH.c+g.startOff.dx, y: GH.r+g.startOff.dy,
+    dir:{x:0,y:-1}, spd: 0.075 + level*0.003,
+    mode:'scatter', frt:0, eaten:false,
+    inHouse: i>0, houseDelay: i*90, phase: Math.random()*6.28,
+    glitchOff: 0, // for glitch animation
+  }));
+}
+
+// ---- Particles ----
+function spawnParts(x,y,color,n,spd){
+  for(let i=0;i<n;i++){
+    const a=Math.PI*2*i/n+Math.random()*.5;
+    const s=spd*(.3+Math.random());
+    parts.push({x,y,vx:Math.cos(a)*s,vy:Math.sin(a)*s,l:1,d:.02+Math.random()*.025,c:color,sz:1+Math.random()*2.5});
+  }
+}
+
+// ---- Score popup ----
+function addPopup(x,y,text,color){
+  popups.push({x,y,text,color,life:1,vy:-.8});
+}
+
+// ---- Walkable check ----
+function walk(c,r,isGhost){
+  // Tunnel wrap
+  if(r<0||r>=ROWS) return false;
+  if(c<0||c>=COLS) return true; // tunnel exit/entry
+  const t=maze[r][c];
+  if(t===T.WALL) return false;
+  if(t===T.DOOR) return !!isGhost;
+  if(t===T.GHOUSE) return !!isGhost;
+  return (t===T.EMPTY||t===T.DOT||t===T.POWER);
+}
+
+// ---- Ghost mode targeting ----
+function targetCell(g){
+  if(g.mode==='scatter') return g.scatter;
+  if(g.eaten) return {c:GH.c, r:GH.r};
+  // Chase logic — each ghost has unique behavior
+  switch(g.i){
+    case 0: // CHASER — targets player directly
+      return {c:player.gx, r:player.gy};
+    case 1: // AMBUSER — targets 4 cells ahead of player
+      return {c:player.gx+player.dir.x*4, r:player.gy+player.dir.y*4};
+    case 2: // SPIKER — unpredictable, targets random corner near player
+      if(fc%180<90) return {c:player.gx, r:player.gy};
+      return {c: (player.gx<COLS/2)?1:COLS-2, r:(player.gy<ROWS/2)?1:ROWS-2};
+    case 3: // BOGER — lazy, only chases if far from player
+      const dx=player.gx-g.gx, dy=player.gy-g.gy;
+      if(dx*dx+dy*dy>64) return {c:player.gx,r:player.gy};
+      return g.scatter;
+  }
+  return {c:player.gx,r:player.gy};
+}
+
+// ---- Ghost direction selection ----
+function ghostDir(g){
+  const dirs=[{x:0,y:-1},{x:0,y:1},{x:-1,y:0},{x:1,y:0}];
+  const oppX=-g.dir.x, oppY=-g.dir.y;
+  const tc=targetCell(g);
+  let best=null, bestD=Infinity, valid=[];
+
+  for(const d of dirs){
+    if(d.x===oppX && d.y===oppY && !g.eaten) continue; // no reverse unless eaten
+    const nc=g.gx+d.x, nr=g.gy+d.y;
+    if(walk(nc,nr,true)) valid.push(d);
+  }
+  if(valid.length===0) return {x:-g.dir.x,y:-g.dir.y}; // forced reverse
+
+  for(const d of valid){
+    const nc=g.gx+d.x, nr=g.gy+d.y;
+    const dd=(nc-tc.c)*(nc-tc.c)+(nr-tc.r)*(nr-tc.r);
+    if(dd<bestD){ bestD=dd; best=d; }
+  }
+  return best||valid[0];
+}
+
+// ---- Player update ----
+let munchTick = 0;
+function updatePlayer(){
+  if(!player.alive) { player.dt--; if(player.dt<=0){ lives--; if(lives<=0){ gameState='gameover'; document.getElementById('final-score').textContent=score; document.getElementById('gameover-screen').classList.add('visible'); } else { resetPlayer(); resetGhosts(); } } return; }
+  if(player.inv>0) player.inv--;
+
+  // Smooth movement: move fractional, snap to grid when at intersection
+  player.gx += player.dir.x * player.spd;
+  player.gy += player.dir.y * player.spd;
+
+  // Update rotation angle for visual
+  if(player.dir.x || player.dir.y){
+    player.angle = Math.atan2(player.dir.y, player.dir.x);
+  }
+
+  const gc = Math.round(player.gx), gr = Math.round(player.gy);
+  const dist = Math.abs(player.gx-gc)+Math.abs(player.gy-gr);
+
+  // Try to turn when near grid center
+  if(dist < player.spd*0.9){
+    player.gx=gc; player.gy=gr;
+    if(walk(gc+player.nxt.x, gr+player.nxt.y, false)){
+      player.dir={...player.nxt};
+      player.angle = Math.atan2(player.dir.y, player.dir.x);
+    }
+    // Check if current direction blocked
+    if(!walk(gc+player.dir.x, gr+player.dir.y, false)){
+      player.dir={x:0,y:0};
+    }
+  }
+
+  // Tunnel wrap (row 14)
+  if(player.gx < -0.5){ player.gx=COLS-0.5; }
+  if(player.gx > COLS-0.5){ player.gx=-0.5; }
+
+  // Eat dots
+  const cc=Math.round(player.gx), cr=Math.round(player.gy);
+  if(cc>=0&&cc<COLS && cr>=0&&cr<ROWS){
+    const t=maze[cr][cc];
+    if(t===T.DOT || t===T.POWER){
+      maze[cr][cc]=T.EMPTY;
+      if(t===T.DOT){
+        score+=10;
+        munchTick++;
+        if(munchTick%2===0) snd('m');
+      } else {
+        // Power pellet!
+        score+=50;
+        frightTmr = Math.max(120, frightDur - level*30);
+        eatChain=0; chainTmr=0;
+        snd('p');
+        // Make all active ghosts frightened
+        for(const g of ghosts){
+          if(!g.eaten && !g.inHouse){
+            g.frt=frightTmr;
+            g.mode='frightened';
+            // Reverse direction
+            g.dir={x:-g.dir.x, y:-g.dir.y};
+          }
+        }
+      }
+      spawnParts(OFF_X+cc*CELL+CELL/2, OFF_Y+cr*CELL+CELL/2, t===T.POWER?'#ff0':'#f80', 4, 2);
+    }
+  }
+
+  // Mouth animation (used for data-packet consumption animation)
+  player.mouth += 0.15 * player.mouthDir;
+  if(player.mouth>1||player.mouth<0) player.mouthDir*=-1;
+  player.mouth=Math.max(0,Math.min(1,player.mouth));
+
+  // Check level clear
+  if(dotsLeft<=0){
+    snd('l');
+    level++;
+    frightDur = Math.max(120, frightDur-30);
+    resetMaze();
+    resetPlayer();
+    resetGhosts();
+    gameState='playing';
+  }
+}
+
+// ---- Ghost update ----
+function updateGhosts(){
+  for(const g of ghosts){
+    // In-house logic
+    if(g.inHouse){
+      g.houseDelay--;
+      if(g.houseDelay<=0){
+        g.inHouse=false;
+        g.gx=GH.c; g.gy=GH.r-1;
+        g.x=g.gx; g.y=g.gy;
+        g.dir={x:0,y:-1};
+      }
+      continue;
+    }
+
+    // Move
+    g.gx += g.dir.x * g.spd;
+    g.gy += g.dir.y * g.spd;
+
+    const gc=Math.round(g.gx), gr=Math.round(g.gy);
+    const dist=Math.abs(g.gx-gc)+Math.abs(g.gy-gr);
+
+    // At intersection — pick new direction
+    if(dist < g.spd*0.9){
+      g.gx=gc; g.gy=gr;
+
+      // Eaten ghost reached home?
+      if(g.eaten && gc===GH.c && gr<=GH.r){
+        g.eaten=false;
+        g.mode = MODESCHED[modeIdx]?.[0]||'chase';
+        g.dir={x:0,y:-1};
+        continue;
+      }
+
+      // Pick new direction
+      g.dir = ghostDir(g);
+    }
+
+    // Tunnel wrap
+    if(g.gx<-0.5) g.gx=COLS-0.5;
+    if(g.gx>COLS-0.5) g.gx=-0.5;
+
+    // Glitch offset for frightened mode
+    if(g.mode==='frightened'){
+      g.glitchOff = (Math.random()-0.5)*3;
+    } else {
+      g.glitchOff *= 0.9;
+    }
+
+    // Frightened timer
+    if(g.frt>0){
+      g.frt--;
+      if(g.frt<=0){
+        g.mode = MODESCHED[modeIdx]?.[0]||'chase';
+      }
+    }
+
+    // Collision with player
+    if(player.alive && player.inv<=0){
+      const dx=player.gx-g.gx, dy=player.gy-g.gy;
+      if(dx*dx+dy*dy<1.5){
+        if(g.mode==='frightened'){
+          // Eat the ghost!
+          g.eaten=true;
+          g.mode='eaten';
+          g.frt=0;
+          eatChain++; chainTmr=180;
+          const pts = 200*Math.pow(2, eatChain-1);
+          score+=pts;
+          snd('e');
+          spawnParts(OFF_X+g.gx*CELL+CELL/2, OFF_Y+g.gy*CELL+CELL/2, g.color, 10, 3);
+          addPopup(OFF_X+g.gx*CELL+CELL/2, OFF_Y+g.gy*CELL+CELL/2, pts.toString(), '#ff0');
+        } else if(!g.eaten){
+          // Player dies!
+          player.alive=false; player.dt=60;
+          snd('d');
+          spawnParts(OFF_X+player.gx*CELL+CELL/2, OFF_Y+player.gy*CELL+CELL/2, '#ff0', 15, 4);
+        }
+      }
+    }
+  }
+}
+
+// ---- Mode timer ----
+function updateModes(){
+  if(!MODESCHED[modeIdx]) return;
+  modeTmr++;
+  if(modeTmr >= MODESCHED[modeIdx][1]){
+    modeTmr=0;
+    modeIdx=(modeIdx+1)%MODESCHED.length;
+  }
+  // Apply current mode to non-frightened, non-eaten ghosts
+  const curMode = MODESCHED[modeIdx]?.[0]||'chase';
+  for(const g of ghosts){
+    if(!g.inHouse && g.frt<=0 && !g.eaten){
+      g.mode=curMode;
+    }
+  }
+}
+
+// ---- Chain timer ----
+function updateChain(){
+  if(chainTmr>0){ chainTmr--; if(chainTmr<=0) eatChain=0; }
+}
+
+// ---- Particles update ----
+function updateParts(){
+  for(let i=parts.length-1;i>=0;i--){
+    const p=parts[i];
+    p.x+=p.vx; p.y+=p.vy; p.l-=p.d;
+    if(p.l<=0) parts.splice(i,1);
+  }
+}
+
+// ---- Popups update ----
+function updatePopups(){
+  for(let i=popups.length-1;i>=0;i--){
+    const p=popups[i];
+    p.y+=p.vy; p.life-=.025;
+    if(p.life<=0) popups.splice(i,1);
+  }
+}
+
+// ---- Drawing: Cyberpunk walls ----
+function drawMaze(){
+  ctx.shadowBlur = 0;
+  for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++){
+    const t=maze[r][c];
+    const x=OFF_X+c*CELL, y=OFF_Y+r*CELL;
+
+    if(t===T.WALL){
+      // Check neighbors to draw clean wall segments
+      const hasTop=r>0&&maze[r-1][c]!==T.WALL;
+      const hasBot=r<ROWS-1&&maze[r+1][c]!==T.WALL;
+      const hasLeft=c>0&&maze[r][c-1]!==T.WALL;
+      const hasRight=c<COLS-1&&maze[r][c+1]!==T.WALL;
+
+      // Wall fill — dark circuit-board color (slightly lighter)
+      ctx.fillStyle = '#0c1a2e';
+      ctx.fillRect(x, y, CELL, CELL);
+
+      // Wall edge — bright neon cyan, thick and visible
+      const edgeColor = 'rgba(0,200,255,' + (0.35 + 0.15*Math.sin(fc*0.02 + c*0.3 + r*0.3)) + ')';
+      ctx.strokeStyle = '#00ccff';
+      ctx.shadowColor = '#00ccff';
+      ctx.shadowBlur = 2;
+      ctx.lineWidth = 2.5;
+
+      if(hasTop)  { ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x+CELL,y); ctx.stroke(); }
+      if(hasBot)  { ctx.beginPath(); ctx.moveTo(x,y+CELL); ctx.lineTo(x+CELL,y+CELL); ctx.stroke(); }
+      if(hasLeft) { ctx.beginPath(); ctx.moveTo(x,y); ctx.lineTo(x,y+CELL); ctx.stroke(); }
+      if(hasRight){ ctx.beginPath(); ctx.moveTo(x+CELL,y); ctx.lineTo(x+CELL,y+CELL); ctx.stroke(); }
+
+      // Data-stream nodes at wall intersections (decorative)
+      const isH = hasTop || hasBot;
+      const isV = hasLeft || hasRight;
+      if(isH && isV){
+        // Corner — draw a small circuit node (brighter)
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'rgba(0,200,255,0.5)';
+        ctx.fillRect(x+CELL/2-2, y+CELL/2-2, 4, 4);
+      }
+
+      // Subtle circuit traces on wall surface (decorative)
+      if((r+c)%5===0 && !hasTop && !hasLeft){
+        ctx.strokeStyle = 'rgba(0,200,255,0.18)';
+        ctx.shadowBlur = 0;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(x+2, y+CELL-2);
+        ctx.lineTo(x+2, y+2);
+        ctx.lineTo(x+CELL-2, y+2);
+        ctx.stroke();
+      }
+    }
+
+    if(t===T.DOT){
+      // Data packet — bright glowing square (not circle!)
+      const pulse = .5 + .5*Math.sin(fc*.08 + c*.7 + r*.3);
+      const sz = 3 + pulse*1.5;
+      ctx.shadowColor = '#f80';
+      ctx.shadowBlur = 4 + pulse*3;
+      ctx.fillStyle = `rgba(255,${140+Math.floor(pulse*80)},0,${.8+pulse*.2})`;
+      ctx.fillRect(x+CELL/2-sz/2, y+CELL/2-sz/2, sz, sz);
+    }
+
+    if(t===T.POWER){
+      // Power core — pulsing diamond shape with inner glow
+      const pulse = .5 + .5*Math.sin(fc*.1);
+      const sz = 6 + pulse*3;
+      const cx = x+CELL/2, cy = y+CELL/2;
+
+      ctx.shadowColor = '#ff0';
+      ctx.shadowBlur = 12 + pulse*8;
+
+      // Outer diamond — bright yellow-orange
+      ctx.fillStyle = `rgba(255,${220-Math.floor(pulse*80)},0,${.8+pulse*.2})`;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy-sz);
+      ctx.lineTo(cx+sz, cy);
+      ctx.lineTo(cx, cy+sz);
+      ctx.lineTo(cx-sz, cy);
+      ctx.closePath();
+      ctx.fill();
+
+      // Inner diamond (white-hot center)
+      const isz = sz * 0.4;
+      ctx.fillStyle = `rgba(255,255,${180+Math.floor(pulse*75)},${.9+pulse*.1})`;
+      ctx.beginPath();
+      ctx.moveTo(cx, cy-isz);
+      ctx.lineTo(cx+isz, cy);
+      ctx.lineTo(cx, cy+isz);
+      ctx.lineTo(cx-isz, cy);
+      ctx.closePath();
+      ctx.fill();
+    }
+
+    if(t===T.DOOR){
+      // Gate — magenta dashed line
+      ctx.strokeStyle = '#f4f';
+      ctx.shadowColor = '#f4f';
+      ctx.shadowBlur = 6;
+      ctx.lineWidth = 2.5;
+      ctx.setLineDash([4, 3]);
+      ctx.beginPath();
+      ctx.moveTo(x+2, y+CELL/2);
+      ctx.lineTo(x+CELL-2, y+CELL/2);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+  }
+  ctx.shadowBlur = 0;
+}
+
+// ---- Drawing: Player — Hexagonal data-harvester core ----
+function drawPlayer(){
+  if(!player.alive){
+    // Flash during death animation
+    if(Math.floor(fc/6)%2===0) return;
+  }
+  // Invincibility flash
+  if(player.inv>0 && Math.floor(fc/4)%2===0) return;
+
+  const cx=OFF_X+player.gx*CELL+CELL/2;
+  const cy=OFF_Y+player.gy*CELL+CELL/2;
+  const r=CELL*.38;
+
+  const rot = player.angle;
+
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(rot);
+
+  // Outer glow halo — subtle aura
+  ctx.shadowColor='#0ff';
+  ctx.shadowBlur=20;
+  ctx.fillStyle='rgba(0,255,255,0.06)';
+  ctx.beginPath();
+  ctx.arc(0, 0, r*1.3, 0, Math.PI*2);
+  ctx.fill();
+
+  // Outer hexagon — filled bright cyan body (not just outline!)
+  ctx.shadowBlur=12;
+  ctx.shadowColor='#0ff';
+  ctx.fillStyle='#00ddff';
+  ctx.beginPath();
+  for(let i=0;i<6;i++){
+    const a = Math.PI/3*i;
+    const px = Math.cos(a)*r;
+    const py = Math.sin(a)*r;
+    if(i===0) ctx.moveTo(px,py);
+    else ctx.lineTo(px,py);
+  }
+  ctx.closePath();
+  ctx.fill();
+
+  // Cyan outline
+  ctx.strokeStyle='#88ffff';
+  ctx.lineWidth=2;
+  ctx.stroke();
+
+  // Inner hexagon (rotating) — white core
+  const innerRot = fc * 0.06;
+  ctx.shadowBlur=8;
+  ctx.shadowColor='#fff';
+  ctx.strokeStyle='#fff';
+  ctx.lineWidth=1.5;
+  ctx.beginPath();
+  for(let i=0;i<6;i++){
+    const a = Math.PI/3*i + innerRot;
+    const px = Math.cos(a)*r*0.5;
+    const py = Math.sin(a)*r*0.5;
+    if(i===0) ctx.moveTo(px,py);
+    else ctx.lineTo(px,py);
+  }
+  ctx.closePath();
+  ctx.stroke();
+
+  // Fill inner hexagon with bright white-cyan
+  ctx.fillStyle='rgba(180,255,255,0.7)';
+  ctx.fill();
+
+  // Center energy node — bright pulsing dot
+  const energyPulse = .5 + .5*Math.sin(fc*.1);
+  ctx.shadowBlur=12+energyPulse*8;
+  ctx.shadowColor='#fff';
+  ctx.fillStyle=`rgba(255,255,255,${.6+energyPulse*.4})`;
+  ctx.beginPath();
+  ctx.arc(0, 0, 3+energyPulse*1.5, 0, Math.PI*2);
+  ctx.fill();
+
+  // Directional "mouth" — V-shaped data intake slot (bright white lines)
+  const intake = .3 + player.mouth * .5;
+  ctx.shadowBlur=8;
+  ctx.shadowColor='#0ff';
+  ctx.strokeStyle='#aff';
+  ctx.lineWidth=2.5;
+  ctx.beginPath();
+  const inLen = r * (0.4 + intake * 0.6);
+  const inW = r * (0.25 + intake * 0.35);
+  ctx.moveTo(r*0.65, 0);
+  ctx.lineTo(r*0.65 + inLen, -inW);
+  ctx.moveTo(r*0.65, 0);
+  ctx.lineTo(r*0.65 + inLen, inW);
+  ctx.stroke();
+
+  // Fill the intake V-shape with bright color
+  ctx.fillStyle=`rgba(180,255,255,${.2+intake*.3})`;
+  ctx.beginPath();
+  ctx.moveTo(r*0.65, 0);
+  ctx.lineTo(r*0.65 + inLen, -inW);
+  ctx.lineTo(r*0.65 + inLen, inW);
+  ctx.closePath();
+  ctx.fill();
+
+  // Circuit traces radiating from edges (visible)
+  ctx.strokeStyle='rgba(180,255,255,0.4)';
+  ctx.lineWidth=1;
+  ctx.shadowBlur=0;
+  for(let i=0;i<6;i++){
+    const a = Math.PI/3*i;
+    const ex = Math.cos(a)*r;
+    const ey = Math.sin(a)*r;
+    ctx.beginPath();
+    ctx.moveTo(ex, ey);
+    ctx.lineTo(ex + Math.cos(a)*4, ey + Math.sin(a)*4);
+    ctx.stroke();
+  }
+
+  // Small orbital dots around hexagon
+  ctx.fillStyle='rgba(0,255,255,0.6)';
+  ctx.shadowColor='#0ff';
+  ctx.shadowBlur=4;
+  for(let i=0;i<3;i++){
+    const a = fc*0.04 + Math.PI*2/3*i;
+    const ox = Math.cos(a)*r*1.15;
+    const oy = Math.sin(a)*r*1.15;
+    ctx.beginPath();
+    ctx.arc(ox, oy, 1.5, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  ctx.restore();
+}
+
+// ---- Drawing: ICE Sentinel (cyberpunk ghost analog) ----
+function drawICESentinel(g){
+  let cx=OFF_X+g.gx*CELL+CELL/2;
+  let cy=OFF_Y+g.gy*CELL+CELL/2;
+  const r=CELL*.4;
+
+  // In-house: bob up and down at house position
+  if(g.inHouse){
+    cy = OFF_Y + (GH.r + Math.sin(fc*.05+g.phase)*.15)*CELL+CELL/2;
+    cx = OFF_X + (GH.c + g.startOff.dx)*CELL+CELL/2;
+  }
+
+  let color=g.color;
+  let isFrightened = g.mode==='frightened';
+  let isEaten = g.eaten;
+
+  // Frightened color
+  if(isFrightened){
+    if(g.frt<120 && Math.floor(fc/8)%2===0) color='#fff';
+    else color='#3355aa';
+  }
+
+  // Glitch offset
+  const gx = isFrightened ? g.glitchOff : 0;
+
+  ctx.save();
+  ctx.translate(cx + gx, cy);
+
+  const shape = g.shape || 'diamond';
+
+  if(isEaten){
+    // Eaten: just glowing eye-sockets (core returning to house)
+    ctx.shadowBlur=10;
+    ctx.shadowColor=color;
+    ctx.strokeStyle=color;
+    ctx.lineWidth=2;
+    // Glowing ring
+    ctx.beginPath();
+    ctx.arc(0, 0, r*0.5, 0, Math.PI*2);
+    ctx.stroke();
+    // Inner dot
+    ctx.fillStyle=color;
+    ctx.beginPath();
+    ctx.arc(0, 0, 3, 0, Math.PI*2);
+    ctx.fill();
+    ctx.restore();
+    return;
+  }
+
+  if(isFrightened){
+    // Frightened: distorted, glitching diamond with cracks
+    ctx.shadowBlur=8;
+    ctx.shadowColor=color;
+    ctx.strokeStyle=color;
+    ctx.lineWidth=2.5;
+    ctx.fillStyle=`rgba(51,85,170,${.5+Math.random()*0.2})`;
+
+    // Glitching diamond
+    const glitch = Math.random() * 3;
+    ctx.beginPath();
+    ctx.moveTo(-r+glitch, -r);
+    ctx.lineTo(r, -r+glitch);
+    ctx.lineTo(r+glitch, r);
+    ctx.lineTo(-r, r+glitch);
+    ctx.closePath();
+    ctx.fill();
+    ctx.stroke();
+
+    // Crack lines
+    ctx.shadowBlur=0;
+    ctx.strokeStyle='rgba(255,255,255,0.4)';
+    ctx.lineWidth=1.5;
+    ctx.beginPath();
+    ctx.moveTo(-r*.5, -r*.2);
+    ctx.lineTo(r*.1, r*.2);
+    ctx.moveTo(r*.3, -r*.6);
+    ctx.lineTo(r*.1, r*.3);
+    ctx.stroke();
+
+  } else {
+    // Normal ICE Sentinel — distinct geometric shape per sentinel
+    ctx.shadowBlur=14;
+    ctx.shadowColor=color;
+
+    switch(shape){
+      case 'diamond':
+        // CHASER — red diamond with inner cross
+        ctx.fillStyle=color;
+        ctx.strokeStyle='rgba(255,255,255,0.6)';
+        ctx.lineWidth=2;
+        ctx.beginPath();
+        ctx.moveTo(0, -r);
+        ctx.lineTo(r*.9, 0);
+        ctx.lineTo(0, r);
+        ctx.lineTo(-r*.9, 0);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // Inner crosshair
+        const glow = .5 + .5*Math.sin(fc*.06 + g.phase);
+        ctx.shadowBlur=4;
+        ctx.strokeStyle=`rgba(255,255,255,${.5+glow*.3})`;
+        ctx.lineWidth=2;
+        ctx.beginPath();
+        ctx.moveTo(-r*.4, 0); ctx.lineTo(r*.4, 0);
+        ctx.moveTo(0, -r*.4); ctx.lineTo(0, r*.4);
+        ctx.stroke();
+        break;
+
+      case 'cross':
+        // AMBUSER — orange cross/plus shape
+        ctx.fillStyle=color;
+        ctx.strokeStyle='rgba(255,255,255,0.5)';
+        ctx.lineWidth=2;
+        const cw = r*0.35;
+        ctx.beginPath();
+        ctx.moveTo(-cw, -r);
+        ctx.lineTo(cw, -r);
+        ctx.lineTo(cw, -cw);
+        ctx.lineTo(r, -cw);
+        ctx.lineTo(r, cw);
+        ctx.lineTo(cw, cw);
+        ctx.lineTo(cw, r);
+        ctx.lineTo(-cw, r);
+        ctx.lineTo(-cw, cw);
+        ctx.lineTo(-r, cw);
+        ctx.lineTo(-r, -cw);
+        ctx.lineTo(-cw, -cw);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // Center node
+        ctx.shadowBlur=0;
+        ctx.fillStyle='rgba(255,255,255,0.5)';
+        ctx.beginPath();
+        ctx.arc(0,0,cw*.7,0,Math.PI*2);
+        ctx.fill();
+        break;
+
+      case 'triangle':
+        // SPIKER — cyan triangle-shard
+        ctx.fillStyle=color;
+        ctx.strokeStyle='rgba(255,255,255,0.5)';
+        ctx.lineWidth=2;
+        ctx.beginPath();
+        ctx.moveTo(0, -r);
+        ctx.lineTo(r*.9, r*.7);
+        ctx.lineTo(-r*.9, r*.7);
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // Inner line
+        ctx.shadowBlur=0;
+        ctx.strokeStyle='rgba(255,255,255,0.5)';
+        ctx.lineWidth=2;
+        ctx.beginPath();
+        ctx.moveTo(0, -r*.2);
+        ctx.lineTo(0, r*.35);
+        ctx.stroke();
+        break;
+
+      case 'hex':
+        // BOGER — magenta hexagon
+        ctx.fillStyle=color;
+        ctx.strokeStyle='rgba(255,255,255,0.5)';
+        ctx.lineWidth=2;
+        ctx.beginPath();
+        for(let i=0;i<6;i++){
+          const a = Math.PI/3*i;
+          const px = Math.cos(a)*r;
+          const py = Math.sin(a)*r;
+          if(i===0) ctx.moveTo(px,py);
+          else ctx.lineTo(px,py);
+        }
+        ctx.closePath();
+        ctx.fill();
+        ctx.stroke();
+        // Inner ring
+        ctx.shadowBlur=0;
+        ctx.strokeStyle='rgba(255,255,255,0.4)';
+        ctx.lineWidth=1.5;
+        ctx.beginPath();
+        ctx.arc(0,0,r*0.45,0,Math.PI*2);
+        ctx.stroke();
+        break;
+    }
+
+    // "Eye" — single glowing sensor (not classic ghost eyes)
+    ctx.shadowBlur=8;
+    ctx.shadowColor='#fff';
+    ctx.fillStyle='#fff';
+    ctx.beginPath();
+    ctx.arc(0, -r*.1, 3, 0, Math.PI*2);
+    ctx.fill();
+    // Sensor pupil — tracks direction
+    const pupilOff = 1.5;
+    ctx.shadowBlur=0;
+    ctx.fillStyle=color;
+    ctx.beginPath();
+    ctx.arc(0+g.dir.x*pupilOff, -r*.1+g.dir.y*pupilOff, 1.5, 0, Math.PI*2);
+    ctx.fill();
+  }
+
+  // Name tag
+  if(!isFrightened && !g.inHouse){
+    ctx.shadowBlur=0;
+    ctx.font='7px Orbitron,sans-serif';
+    ctx.fillStyle=color;
+    ctx.globalAlpha=0.7;
+    ctx.textAlign='center';
+    ctx.fillText(g.name, 0, r+12);
+    ctx.globalAlpha=1;
+  }
+
+  ctx.restore();
+}
+
+// ---- Drawing: Particles ----
+function drawParts(){
+  for(const p of parts){
+    ctx.globalAlpha=p.l;
+    ctx.fillStyle=p.c;
+    ctx.shadowColor=p.c; ctx.shadowBlur=4;
+    ctx.fillRect(p.x-p.sz/2, p.y-p.sz/2, p.sz*p.l, p.sz*p.l);
+  }
+  ctx.globalAlpha=1; ctx.shadowBlur=0;
+}
+
+// ---- Drawing: Score popups ----
+function drawPopups(){
+  for(const p of popups){
+    ctx.globalAlpha=Math.min(1,p.life*2);
+    ctx.font='bold 14px Orbitron,sans-serif';
+    ctx.fillStyle=p.color;
+    ctx.shadowColor=p.color; ctx.shadowBlur=6;
+    ctx.textAlign='center';
+    ctx.fillText(p.text, p.x, p.y);
+  }
+  ctx.globalAlpha=1; ctx.shadowBlur=0;
+}
+
+// ---- Drawing HUD ----
+function drawHUD(){
+  document.getElementById('score-display').textContent = score.toLocaleString();
+  document.getElementById('level-display').textContent = level;
+  document.getElementById('high-display').textContent = hiScore.toLocaleString();
+  // Lives as hex outlines
+  let lv=''; for(let i=0;i<lives;i++) lv+='◆ ';
+  document.getElementById('lives-display').textContent=lv.trim();
+  // Chain display
+  const cd=document.getElementById('chain-display');
+  if(eatChain>0){
+    cd.textContent=eatChain+'x ('+ (200*Math.pow(2,Math.min(eatChain-1,3))) +')';
+    cd.style.color='#ff0';
+  } else {
+    cd.innerHTML='&nbsp;';
+  }
+
+  // Ghost status indicators
+  const gs=document.getElementById('ghost-status');
+  let ghHtml='';
+  for(const g of ghosts){
+    if(g.inHouse) continue;
+    let bg=g.color;
+    if(g.mode==='frightened') bg='#3355aa';
+    if(g.eaten) bg='#fff';
+    ghHtml+=`<div class="gs-indicator" style="background:${bg};box-shadow:0 0 6px ${bg}"></div>`;
+  }
+  gs.innerHTML=ghHtml;
+}
+
+// ---- Main game loop ----
+function update(){
+  if(gameState!=='playing') return;
+  fc++;
+  updatePlayer();
+  updateGhosts();
+  updateModes();
+  updateChain();
+  updateParts();
+  updatePopups();
+
+  // Update dots remaining count
+  if(fc%10===0){
+    dotsLeft=0;
+    for(let r=0;r<ROWS;r++) for(let c=0;c<COLS;c++)
+      if(maze[r][c]===T.DOT||maze[r][c]===T.POWER) dotsLeft++;
+  }
+
+  // Update high score
+  if(score>hiScore){ hiScore=score; localStorage.setItem('ndHi',hiScore); }
+
+  drawHUD();
+}
+
+function draw(){
+  ctx.fillStyle='#050510';
+  ctx.fillRect(0,0,W,H);
+
+  // Background subtle grid in maze area
+  ctx.strokeStyle='rgba(0,255,255,0.03)';
+  ctx.lineWidth=0.5;
+  for(let x=OFF_X;x<OFF_X+COLS*CELL;x+=CELL){
+    ctx.beginPath(); ctx.moveTo(x,OFF_Y); ctx.lineTo(x,OFF_Y+ROWS*CELL); ctx.stroke();
+  }
+  for(let y=OFF_Y;y<OFF_Y+ROWS*CELL;y+=CELL){
+    ctx.beginPath(); ctx.moveTo(OFF_X,y); ctx.lineTo(OFF_X+COLS*CELL,y); ctx.stroke();
+  }
+
+  drawMaze();
+  if(gameState==='playing'||gameState==='gameover'){
+    for(const g of ghosts) drawICESentinel(g);
+    drawPlayer();
+  }
+  drawParts();
+  drawPopups();
+
+  // Frightened timer bar (top center, thin line)
+  if(frightTmr>0){
+    const pct=frightTmr/frightDur;
+    ctx.fillStyle='rgba(255,255,0,0.3)';
+    ctx.fillRect(W/2-60, OFF_Y-8, 120*pct, 2);
+  }
+
+  // Level transition announcement
+  if(fc<180 && gameState==='playing' && level>1){
+    const alpha = fc<60?fc/60:fc<120?1:(180-fc)/60;
+    ctx.globalAlpha=alpha;
+    ctx.font='bold 24px Orbitron,sans-serif';
+    ctx.fillStyle='#ff0';
+    ctx.textAlign='center';
+    ctx.shadowColor='#ff0'; ctx.shadowBlur=10;
+    ctx.fillText('SECTOR '+level+' ACTIVE', W/2, H/2-40);
+    ctx.globalAlpha=1; ctx.shadowBlur=0;
+  }
+}
+
+function gameLoop(){
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+// ---- Input ----
+document.addEventListener('keydown', e=>{
+  const code=e.code;
+  // Prevent scrolling for game keys
+  if(['ArrowUp','ArrowDown','ArrowLeft','ArrowRight','Space'].includes(code)) e.preventDefault();
+
+  if(code==='Enter'){
+    initAudio();
+    if(gameState==='menu'){
+      gameState='playing';
+      document.getElementById('menu-screen').classList.add('hidden');
+      resetMaze(); resetPlayer(); resetGhosts();
+      score=0; level=1; frightTmr=0; eatChain=0; chainTmr=0;
+      modeTmr=0; modeIdx=0; frightDur=420;
+    } else if(gameState==='gameover'){
+      gameState='playing';
+      document.getElementById('gameover-screen').classList.remove('visible');
+      resetMaze(); resetPlayer(); resetGhosts();
+      score=0; level=1; lives=3; frightTmr=0; eatChain=0; chainTmr=0;
+      modeTmr=0; modeIdx=0; frightDur=420;
+    }
+  }
+
+  if(code==='KeyP' && gameState==='playing'){
+    gameState='paused';
+    document.getElementById('pause-indicator').style.display='block';
+    return;
+  }
+  if(code==='KeyP'){
+    if(gameState==='paused'){
+      gameState='playing';
+      document.getElementById('pause-indicator').style.display='none';
+    }
+    return;
+  }
+
+  if(gameState!=='playing') return;
+  switch(code){
+    case 'ArrowUp':    player.nxt={x:0,y:-1}; break;
+    case 'ArrowDown':  player.nxt={x:0,y:1}; break;
+    case 'ArrowLeft':  player.nxt={x:-1,y:0}; break;
+    case 'ArrowRight': player.nxt={x:1,y:0}; break;
+  }
+});
+
+// ---- Init ----
+function init(){
+  resetMaze(); resetPlayer(); resetGhosts();
+  document.getElementById('high-display').textContent=hiScore.toLocaleString();
+  let lv=''; for(let i=0;i<3;i++) lv+='◆ ';
+  document.getElementById('lives-display').textContent=lv.trim();
+  gameLoop();
+}
+
+init();
+</script>
+</body>
+</html>
