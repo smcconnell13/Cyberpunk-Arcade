@@ -67,7 +67,7 @@ canvas{display:block;background:#000}
 </head>
 <body>
 <a href="arcade.html" id="backLink">&lt;&lt; BACK TO ARCADE</a>
-<div id="gameContainer" class="screen">
+<div id="gameContainer">
   <canvas id="gameCanvas"></canvas>
   <div id="hud">
     <div class="player-hud p1-hud" id="p1Hud">P1: EMP[1] RAD[1] SPD[N]</div>
@@ -142,6 +142,7 @@ canvas{display:block;background:#000}
       <input class="terminal-input" id="joinInput" placeholder="Paste Host's invite code here...">
       <button class="terminal-btn" id="btnGenerateResponse">[ GENERATE RESPONSE ]</button>
       <div id="joinStatus" class="status-line"></div>
+      <button class="terminal-btn magenta" id="btnJoinBack" style="margin-top:16px">[ BACK TO LOBBY ]</button>
     </div>
   </div>
   <!-- RESPONSE -->
@@ -259,6 +260,7 @@ var lastTime=0,frameCount=0;
 var hostPC=null,hostDC=null,hostJoined=false,hostSeed='';
 var joinPC=null,joinDC=null,joinConnected=false;
 var debugMode=false;
+var _p2BombJustDropped=false;
 
 // ========== BASE64 HELPERS ==========
 // Simple base64 encode/decode for ASCII strings
@@ -281,6 +283,20 @@ function initGame(){
      speed:BASE_SPD,maxBombs:BASE_BOMBS,blastRadius:BASE_RAD,alive:true,md:{x:0,y:0}}
   ];
   genGrid();
+  updateHUD();
+  lastTime=performance.now();
+  requestAnimationFrame(gameLoop);
+}
+
+// ========== INIT GAME FROM REMOTE STATE ==========
+// Used by the joiner when receiving host's init message
+function initGameFromState(){
+  if(gameStarted)return;
+  gameStarted=true;
+  explosions=[];particles=[];
+  gameOver=false;goOverlay.classList.remove('active');
+  scoreboard.style.display='none';
+  startOverlay.classList.remove('active');
   updateHUD();
   lastTime=performance.now();
   requestAnimationFrame(gameLoop);
@@ -334,12 +350,29 @@ function hostStart(){
 
   hostDC.onopen=function(){
     hostJoined=true;
+    // Hide all UI screens
+    var hKeys=['lobby','host','join','response'];
+    for(var h=0;h<hKeys.length;h++){screens[hKeys[h]].classList.remove('active');}
+    // Initialize game state for host
+    bombs=[];explosions=[];particles=[];powerups=[];
+    gameOver=false;
+    players=[
+      {id:1,color:'#00ffff',gx:1,gy:1,px:TS,py:TS,
+       speed:BASE_SPD,maxBombs:BASE_BOMBS,blastRadius:BASE_RAD,alive:true,md:{x:0,y:0}},
+      {id:2,color:'#ff00ff',gx:COLS-2,gy:ROWS-2,px:(COLS-2)*TS,py:(ROWS-2)*TS,
+       speed:BASE_SPD,maxBombs:BASE_BOMBS,blastRadius:BASE_RAD,alive:true,md:{x:0,y:0}}
+    ];
+    genGrid();
+    updateHUD();
+    document.getElementById('hud').style.display='flex';
     setStatus('hostStatus','[+] Player 2 connected!','connected');
     document.getElementById('hostConnectionStatus').textContent='[+] Game starting...';
     document.getElementById('hostConnectionStatus').className='status-line connected';
     sendHostInit();
     gameStarted=true;
     startCountdown();
+    lastTime=performance.now();
+    requestAnimationFrame(gameLoop);
   };
 
   hostDC.onmessage=function(e){
@@ -348,7 +381,10 @@ function hostStart(){
     if(d.type==='input'&&players[1]){
       var p2=players[1];
       if(p2.alive){p2.md.x=d.input.dx||0;p2.md.y=d.input.dy||0;}
-      if(d.input.bomb&&p2.alive)dropBomb(1);
+      if(d.input.bomb&&p2.alive&&!_p2BombJustDropped){
+        dropBomb(1);
+        _p2BombJustDropped=true;
+      }
     }
   };
 
@@ -356,14 +392,30 @@ function hostStart(){
   hostDC.onerror=function(){hostJoined=false;};
 
   hostPC.createOffer().then(function(offer){
-    return hostPC.setLocalDescription(offer).then(function(){
-      return offer;
+    return hostPC.setLocalDescription(offer);
+  }).then(function(){
+    // Wait for ICE gathering so candidates are included in the SDP
+    return new Promise(function(resolve,reject){
+      var onState=function(){
+        if(hostPC.iceGatheringState==='complete'){
+          hostPC.removeEventListener('icegatheringstatechange',onState);
+          resolve(hostPC.localDescription);
+        }
+      };
+      hostPC.addEventListener('icegatheringstatechange',onState);
+      // Safety timeout: 10 seconds
+      setTimeout(function(){
+        if(hostPC.iceGatheringState!=='complete'){
+          hostPC.removeEventListener('icegatheringstatechange',onState);
+          resolve(hostPC.localDescription);
+        }
+      },10000);
     });
-  }).then(function(offer){
-    var data={id:hostSeed,offer:JSON.stringify(offer)};
+  }).then(function(description){
+    var data={id:hostSeed,offer:JSON.stringify(description)};
     var code=b64enc(JSON.stringify(data));
     document.getElementById('inviteCodeDisplay').textContent=code;
-    setStatus('hostStatus','[&gt;] Share this code with Player 2','waiting');
+    setStatus('hostStatus','[+] Share this code with Player 2','waiting');
   }).catch(function(e){
     setStatus('hostStatus','[x] Error: '+e.message,'error');
   });
@@ -377,8 +429,8 @@ function sendHostInit(){
     players:players.map(function(p){
       return{px:p.px,py:p.py,speed:p.speed,maxBombs:p.maxBombs,blastRadius:p.blastRadius,alive:p.alive,id:p.id,color:p.color,gx:p.gx,gy:p.gy};
     }),
-    bombs:bombs.map(function(b){return{x:b.gx,y:b.gy,timer:b.timer,owner:b.owner};}),
-    powerups:powerups.map(function(p){return{x:p.gx,y:p.gy,type:p.type};}),
+    bombs:bombs.map(function(b){return{x:b.x,y:b.y,timer:b.timer,owner:b.owner,active:b.active};}),
+    powerups:powerups.map(function(p){return{x:p.x,y:p.y,type:p.type,bobPhase:p.bobPhase};}),
     seed:hostSeed
   }));
 }
@@ -391,9 +443,9 @@ function sendHostState(){
     players:players.map(function(p){
       return{px:p.px,py:p.py,speed:p.speed,maxBombs:p.maxBombs,blastRadius:p.blastRadius,alive:p.alive,id:p.id};
     }),
-    bombs:bombs.filter(function(b){return b.active;}).map(function(b){return{x:b.gx,y:b.gy,timer:b.timer,owner:b.owner};}),
-    explosions:explosions.map(function(e){return{x:e.gx,y:e.gy,timer:e.timer};}),
-    powerups:powerups.map(function(p){return{x:p.gx,y:p.gy,type:p.type};}),
+    bombs:bombs.filter(function(b){return b.active;}).map(function(b){return{x:b.x,y:b.y,timer:b.timer,owner:b.owner,active:b.active};}),
+    explosions:explosions.map(function(e){return{x:e.x,y:e.y,timer:e.timer};}),
+    powerups:powerups.map(function(p){return{x:p.x,y:p.y,type:p.type,bobPhase:p.bobPhase};}),
     gameOver:gameOver,
     winner:gameOver?(players[0].alive?(players[1].alive?2:0):1):-1
   }));
@@ -442,14 +494,16 @@ function joinConnect(inviteCode){
           });
         }
         var bData=d.bombs;
-        bombs=bData?bData.map(function(b){return{x:b.x,y:b.y,timer:b.timer,owner:b.owner,active:true};}):[];
+        bombs=bData?bData.map(function(b){return{x:b.x,y:b.y,timer:b.timer,owner:b.owner,active:b.active};}):[];
         var pData2=d.powerups;
-        powerups=pData2?pData2.map(function(p){return{x:p.x,y:p.y,type:p.type};}):[];
+        powerups=pData2?pData2.map(function(p){return{x:p.x,y:p.y,type:p.type,bobPhase:p.bobPhase};}):[];
         explosions=[];particles=[];
         gameOver=!!d.gameOver;
-        showScr('game');
+        // Hide all UI screens — canvas is always visible
+        var gKeys=['lobby','host','join','response'];
+        for(var g=0;g<gKeys.length;g++){screens[gKeys[g]].classList.remove('active');}
         document.getElementById('hud').style.display='flex';
-        initGame();
+        initGameFromState();
       }else if(d.type==='state'){
         var g2=d.grid;
         if(g2&&g2.length){
@@ -472,11 +526,11 @@ function joinConnect(inviteCode){
             });
           }
           var b2=d.bombs;
-          if(b2)bombs=b2.map(function(b){return{x:b.x,y:b.y,timer:b.timer,owner:b.owner,active:true};});
+          if(b2)bombs=b2.map(function(b){return{x:b.x,y:b.y,timer:b.timer,owner:b.owner,active:b.active};});
           var e2=d.explosions;
           if(e2)explosions=e2.map(function(e){return{x:e.x,y:e.y,timer:e.timer};});
           var pu2=d.powerups;
-          if(pu2)powerups=pu2.map(function(p){return{x:p.x,y:p.y,type:p.type};});
+          if(pu2)powerups=pu2.map(function(p){return{x:p.x,y:p.y,type:p.type,bobPhase:p.bobPhase};});
           gameOver=!!d.gameOver;
           if(gameOver){
             var w=d.winner;
@@ -498,8 +552,7 @@ function joinConnect(inviteCode){
 
     return joinPC.setRemoteDescription(new RTCSessionDescription(offer)).then(function(){
       return joinPC.createAnswer();
-    });
-  }).then(function(answer){
+    }).then(function(answer){
     return joinPC.setLocalDescription(answer).then(function(){
       return answer;
     });
@@ -513,6 +566,9 @@ function joinConnect(inviteCode){
   }).catch(function(e){
     setStatus('joinStatus','[x] Error: '+e.message,'error');
   });
+  }catch(e){
+    setStatus('joinStatus','[x] Error: '+e.message,'error');
+  }
 }
 
 function showResponseScreen(code){
@@ -538,7 +594,8 @@ function gameLoop(ts){
 // ========== INPUT ==========
 function handleInput(dt){
   var p1=players[0];
-  if(p1&&p1.alive){
+  // Only host processes P1 input locally (joiner gets P1 state from network)
+  if(p1&&p1.alive && !joinConnected){
     var dx=0,dy=0;
     if(keys['ArrowUp'])dy=-1;
     else if(keys['ArrowDown'])dy=1;
@@ -548,25 +605,46 @@ function handleInput(dt){
     if(keys['Enter']){dropBomb(0);keys['Enter']=false;}
   }
   var p2=players[1];
-  if(p2&&p2.alive&&debugMode){
-    var dx=0,dy=0;
-    if(keys['KeyW'])dy=-1;
-    else if(keys['KeyS'])dy=1;
-    else if(keys['KeyA'])dx=-1;
-    else if(keys['KeyD'])dx=1;
-    p2.md={x:dx,y:dy};
-    if(keys['Space']){dropBomb(1);keys['Space']=false;}
+  if(p2&&p2.alive){
+    if(debugMode){
+      // Host local P2 (debug mode)
+      var dx=0,dy=0;
+      if(keys['KeyW'])dy=-1;
+      else if(keys['KeyS'])dy=1;
+      else if(keys['KeyA'])dx=-1;
+      else if(keys['KeyD'])dx=1;
+      p2.md={x:dx,y:dy};
+      if(keys['Space']){dropBomb(1);keys['Space']=false;}
+    }else if(joinConnected){
+      // Joiner P2 (arrow keys + Enter) — send to host, don't drop locally
+      var dx=0,dy=0;
+      if(keys['ArrowUp'])dy=-1;
+      else if(keys['ArrowDown'])dy=1;
+      else if(keys['ArrowLeft'])dx=-1;
+      else if(keys['ArrowRight'])dx=1;
+      p2.md={x:dx,y:dy};
+      p2._bomb=!!keys['Enter'];
+    }
+    // If neither debugMode nor joinConnected, p2.md stays as set by hostDC.onmessage
   }
 }
 
 // ========== UPDATE ==========
 function update(dt){
   if(gameOver)return;
-  // Move players
+  // Move players — host moves both, joiner only moves P2
   for(var pi=0;pi<players.length;pi++){
     var p=players[pi];
-    if(p.alive)movePlayer(p,dt);
+    if(!p.alive)continue;
+    // Joiner: only move P2 locally (P1 position comes from network)
+    if(joinConnected){
+      if(p.id!==2)continue;
+    }
+    // Host: always moves both P1 and P2
+    movePlayer(p,dt);
   }
+  // Send updated state to joiner every frame
+  if(hostJoined&&!debugMode)sendHostState();
   // Power-up pickups
   for(var pi=0;pi<players.length;pi++){
     var p=players[pi];
@@ -586,7 +664,7 @@ function update(dt){
     }
     if(b.active){
       b.timer-=dt*1000;
-      if(b.timer<=0){triggerExp(b);bombs.splice(i,1);}
+      if(b.timer<=0){triggerExp(b);if(b.owner===1)_p2BombJustDropped=false;bombs.splice(i,1);}
     }
   }
   // Explosions
@@ -714,7 +792,10 @@ function dropBomb(pi){
 }
 
 function triggerExp(bomb){
-  var r=players[bomb.owner].blastRadius;
+  if(!bomb||bomb.x===undefined||bomb.y===undefined)return;
+  var player=players[bomb.owner];
+  if(!player)return;
+  var r=player.blastRadius;
   var cardinals=[{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
   // Center
   explosions.push({x:bomb.x,y:bomb.y,timer:EXP_DUR});
@@ -749,7 +830,10 @@ function triggerExp(bomb){
   }
   for(var di=0;di<done.length;di++){
     var cb=done[di];
-    var r2=players[cb.owner].blastRadius;
+    if(!cb||cb.x===undefined||cb.y===undefined)continue;
+    var chainPlayer=players[cb.owner];
+    if(!chainPlayer)continue;
+    var r2=chainPlayer.blastRadius;
     explosions.push({x:cb.x,y:cb.y,timer:EXP_DUR});
     spawnExp(cb.x,cb.y);
     for(var ci=0;ci<cardinals.length;ci++){
@@ -1019,7 +1103,8 @@ document.getElementById('btnHost').addEventListener('click',hostStart);
 document.getElementById('btnJoin').addEventListener('click',joinStart);
 document.getElementById('btnDebug').addEventListener('click',function(){
   debugMode=true;
-  showScr('game');
+  var sKeys=['lobby','host','join','response'];
+  for(var i=0;i<sKeys.length;i++){ screens[sKeys[i]].classList.remove('active'); }
   document.getElementById('hud').style.display='flex';
   p2Debug.style.display='block';
   connDot.style.background='#f00';connDot.style.display='block';
@@ -1056,6 +1141,10 @@ document.getElementById('btnConnect').addEventListener('click',function(){
   try{
     var json=JSON.parse(b64dec(resp));
     var answer=JSON.parse(json.answer);
+    if(!answer||!answer.sdp){
+      setStatus('hostConnectionStatus','[x] Invalid response — answer SDP is empty','error');
+      return;
+    }
     hostPC.setRemoteDescription(new RTCSessionDescription(answer)).then(function(){
       setStatus('hostConnectionStatus','[+] Connected! Game starting...','connected');
     }).catch(function(e){
@@ -1064,6 +1153,13 @@ document.getElementById('btnConnect').addEventListener('click',function(){
   }catch(e){
     setStatus('hostConnectionStatus','[x] Invalid response code','error');
   }
+});
+
+document.getElementById('btnJoinBack').addEventListener('click',function(){
+  if(joinPC){joinPC.close();joinPC=null;}
+  if(joinDC){joinDC.close();joinDC=null;}
+  joinConnected=false;
+  showScr('lobby');
 });
 
 document.getElementById('btnHostBack').addEventListener('click',function(){
@@ -1088,89 +1184,142 @@ document.getElementById('btnGenerateResponse').addEventListener('click',function
     var json=JSON.parse(b64dec(invite));
     var offer=JSON.parse(json.offer);
     joinPC=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
-    joinDC=joinPC.createDataChannel('game',{ordered:true});
-    joinDC.binaryType='arraybuffer';
 
-    joinDC.onopen=function(){
-      joinConnected=true;
-      showScr('response');
-      setStatus('responseStatus','[+] Connected! Waiting for game state...','connected');
-    };
-
-    joinDC.onmessage=function(e){
-      var d=JSON.parse(e.data);
-      if(d.type==='init'){
-        var gData=d.grid;
-        if(gData)grid=gData.map(function(r){return r.slice();});
-        var pData=d.players;
-        if(pData)players=pData.map(function(p){
-          return{id:p.id,color:p.color||'#00ffff',
-            gx:p.gx!==undefined?p.gx:(p.px/TS|0),gy:p.gy!==undefined?p.gy:(p.py/TS|0),
-            px:p.px,py:p.py,speed:p.speed||BASE_SPD,
-            maxBombs:p.maxBombs||BASE_BOMBS,blastRadius:p.blastRadius||BASE_RAD,
-            alive:p.alive!==false,md:{x:0,y:0}};
-        });
-        var bD=d.bombs;
-        bombs=bD?bD.map(function(b){return{x:b.x,y:b.y,timer:b.timer,owner:b.owner,active:true};}):[];
-        var pD=d.powerups;
-        powerups=pD?pD.map(function(p){return{x:p.x,y:p.y,type:p.type};}):[];
-        explosions=[];particles=[];gameOver=!!d.gameOver;
-        showScr('game');
-        document.getElementById('hud').style.display='flex';
-        initGame();
-      }else if(d.type==='state'){
-        var g2=d.grid;
-        if(g2&&g2.length){
-          grid=g2.map(function(r){return r.slice();});
-          var p2=d.players;
-          if(p2){
-            p2.forEach(function(p){
-              var old=null;
-              for(var i=0;i<players.length;i++){if(players[i].id===p.id){old=players[i];break;}}
-              if(!old){
-                players.push({id:p.id,color:p.color||'#00ffff',
-                  gx:p.px/TS|0,gy:p.py/TS|0,px:p.px,py:p.py,
-                  speed:p.speed||BASE_SPD,maxBombs:p.maxBombs||BASE_BOMBS,
-                  blastRadius:p.blastRadius||BASE_RAD,alive:p.alive!==false,md:{x:0,y:0}});
-              }else{
-                old.px=p.px;old.py=p.py;old.alive=p.alive!==false;
-                old.speed=p.speed||old.speed;
-                old.maxBombs=p.maxBombs||old.maxBombs;
-                old.blastRadius=p.blastRadius||old.blastRadius;
-              }
-            });
+    joinPC.ondatachannel=function(e){
+      joinDC=e.channel;
+      joinDC.binaryType='arraybuffer';
+      joinDC.onopen=function(){
+        joinConnected=true;
+        showScr('response');
+        setStatus('responseStatus','[+] Connected! Waiting for game state...','connected');
+      };
+      joinDC.onmessage=function(ev){
+        var d=JSON.parse(ev.data);
+        if(d.type==='init'){
+          var gData=d.grid;
+          if(gData)grid=gData.map(function(r){return r.slice();});
+          var pData=d.players;
+          if(pData)players=pData.map(function(p){
+            return{id:p.id,color:p.color||'#00ffff',
+              gx:p.gx!==undefined?p.gx:(p.px/TS|0),gy:p.gy!==undefined?p.gy:(p.py/TS|0),
+              px:p.px,py:p.py,speed:p.speed||BASE_SPD,
+              maxBombs:p.maxBombs||BASE_BOMBS,blastRadius:p.blastRadius||BASE_RAD,
+              alive:p.alive!==false,md:{x:0,y:0}};
+          });
+          var bD=d.bombs;
+          bombs=bD?bD.map(function(b){return{x:b.x,y:b.y,timer:b.timer,owner:b.owner,active:b.active};}):[];
+          var pD=d.powerups;
+          powerups=pD?pD.map(function(p){return{x:p.x,y:p.y,type:p.type};}):[];
+          explosions=[];particles=[];gameOver=!!d.gameOver;
+          // Hide all UI screens — canvas is always visible
+          var gKeys=['lobby','host','join','response'];
+          for(var g=0;g<gKeys.length;g++){screens[gKeys[g]].classList.remove('active');}
+          document.getElementById('hud').style.display='flex';
+          initGameFromState();
+        }else if(d.type==='state'){
+    var g2=d.grid;
+    if(g2&&g2.length){
+      grid=g2.map(function(r){return r.slice();});
+      var p2=d.players;
+      if(p2){
+        p2.forEach(function(p){
+          var old=null;
+          for(var i=0;i<players.length;i++){if(players[i].id===p.id){old=players[i];break;}}
+          if(!old){
+            players.push({id:p.id,color:p.color||'#00ffff',
+              gx:p.px/TS|0,gy:p.py/TS|0,px:p.px,py:p.py,
+              speed:p.speed||BASE_SPD,maxBombs:p.maxBombs||BASE_BOMBS,
+              blastRadius:p.blastRadius||BASE_RAD,alive:p.alive!==false,md:{x:0,y:0}});
+          }else{
+            old.px=p.px;old.py=p.py;old.alive=p.alive!==false;
+            old.speed=p.speed||old.speed;
+            old.maxBombs=p.maxBombs||old.maxBombs;
+            old.blastRadius=p.blastRadius||old.blastRadius;
           }
-          var b2=d.bombs;
-          if(b2)bombs=b2.map(function(b){return{x:b.x,y:b.y,timer:b.timer,owner:b.owner,active:true};});
-          var e2=d.explosions;
-          if(e2)explosions=e2.map(function(e){return{x:e.x,y:e.y,timer:e.timer};});
-          var pu2=d.powerups;
-          if(pu2)powerups=pu2.map(function(p){return{x:p.x,y:p.y,type:p.type};});
-          gameOver=!!d.gameOver;
-          if(gameOver){
-            var w=d.winner;
-            if(w===0){goTitle.textContent='NETRUNNER 1 WINS';goTitle.style.color='#0ff';stats.p1++;}
-            else if(w===1){goTitle.textContent='NETRUNNER 2 WINS';goTitle.style.color='#f0f';stats.p2++;}
-            else{goTitle.textContent='MUTUAL ANNIHILATION';goTitle.style.color='#f00';}
-            stats.total++;
-            goTitle.style.textShadow='0 0 20px '+goTitle.style.color+',0 0 40px '+goTitle.style.color;
-            scoreboard.style.display='block';
-            goOverlay.classList.add('active');
-            renderScoreboard();
+        });
+      }
+      var b2=d.bombs;
+      if(b2)bombs=b2.map(function(b){return{x:b.x,y:b.y,timer:b.timer,owner:b.owner,active:b.active};});
+      var e2=d.explosions;
+            if(e2)explosions=e2.map(function(e){return{x:e.x,y:e.y,timer:e.timer};});
+            var pu2=d.powerups;
+            if(pu2)powerups=pu2.map(function(p){return{x:p.x,y:p.y,type:p.type,bobPhase:p.bobPhase};});
+            gameOver=!!d.gameOver;
+            if(gameOver){
+              var w=d.winner;
+              if(w===0){goTitle.textContent='NETRUNNER 1 WINS';goTitle.style.color='#0ff';stats.p1++;}
+              else if(w===1){goTitle.textContent='NETRUNNER 2 WINS';goTitle.style.color='#f0f';stats.p2++;}
+              else{goTitle.textContent='MUTUAL ANNIHILATION';goTitle.style.color='#f00';}
+              stats.total++;
+              goTitle.style.textShadow='0 0 20px '+goTitle.style.color+',0 0 40px '+goTitle.style.color;
+              scoreboard.style.display='block';
+              goOverlay.classList.add('active');
+              renderScoreboard();
+            }
           }
         }
-      }
-    };
+      };
+      joinDC.onclose=function(){joinConnected=false;};
+      joinDC.onerror=function(){joinConnected=false;};
 
-    joinDC.onclose=function(){joinConnected=false;};
-    joinDC.onerror=function(){joinConnected=false;};
+      // Send P2 input to host — only when keys change state
+      var p2Keys={},prevDx=0,prevDy=0,prevBomb=false;
+      window.addEventListener('keydown',function(e){
+        if(!joinConnected||!joinDC||joinDC.readyState!=='open')return;
+        p2Keys[e.code]=true;
+        var dx=0,dy=0;
+        if(p2Keys['ArrowUp'])dy=-1;
+        else if(p2Keys['ArrowDown'])dy=1;
+        else if(p2Keys['ArrowLeft'])dx=-1;
+        else if(p2Keys['ArrowRight'])dx=1;
+        var bomb=!!p2Keys['Enter'];
+        // Only send if direction or bomb state actually changed
+        if(dx!==prevDx||dy!==prevDy||bomb!==prevBomb){
+          var data={type:'input',input:{dx:dx,dy:dy,bomb:bomb}};
+          try{joinDC.send(JSON.stringify(data));}catch(ex){}
+          prevDx=dx;prevDy=dy;prevBomb=bomb;
+        }
+      },false);
+      window.addEventListener('keyup',function(e){
+        p2Keys[e.code]=false;
+        // On keyup, direction/bomb may have changed
+        var dx=0,dy=0;
+        if(p2Keys['ArrowUp'])dy=-1;
+        else if(p2Keys['ArrowDown'])dy=1;
+        else if(p2Keys['ArrowLeft'])dx=-1;
+        else if(p2Keys['ArrowRight'])dx=1;
+        var bomb=!!p2Keys['Enter'];
+        if(dx!==prevDx||dy!==prevDy||bomb!==prevBomb){
+          var data={type:'input',input:{dx:dx,dy:dy,bomb:bomb}};
+          try{joinDC.send(JSON.stringify(data));}catch(ex){}
+          prevDx=dx;prevDy=dy;prevBomb=bomb;
+        }
+      },false);
+    };
 
     joinPC.setRemoteDescription(new RTCSessionDescription(offer)).then(function(){
       return joinPC.createAnswer();
     }).then(function(answer){
-      return joinPC.setLocalDescription(answer).then(function(){return answer;});
-    }).then(function(answer){
-      var data={answer:JSON.stringify(answer)};
+      return joinPC.setLocalDescription(answer);
+    }).then(function(){
+      // Wait for ICE gathering so candidates are in the SDP
+      return new Promise(function(resolve){
+        var onState=function(){
+          if(joinPC.iceGatheringState==='complete'){
+            joinPC.removeEventListener('icegatheringstatechange',onState);
+            resolve(joinPC.localDescription);
+          }
+        };
+        joinPC.addEventListener('icegatheringstatechange',onState);
+        setTimeout(function(){
+          if(joinPC.iceGatheringState!=='complete'){
+            joinPC.removeEventListener('icegatheringstatechange',onState);
+            resolve(joinPC.localDescription);
+          }
+        },10000);
+      });
+    }).then(function(description){
+      var data={answer:JSON.stringify(description)};
       var code=b64enc(JSON.stringify(data));
       document.getElementById('responseCodeDisplay').textContent=code;
       setStatus('joinStatus','[+] Response generated! Copy and send to host','connected');
