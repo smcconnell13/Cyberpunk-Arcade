@@ -443,7 +443,7 @@ function sendHostState(){
     players:players.map(function(p){
       return{px:p.px,py:p.py,speed:p.speed,maxBombs:p.maxBombs,blastRadius:p.blastRadius,alive:p.alive,id:p.id};
     }),
-    bombs:bombs.filter(function(b){return b.active;}).map(function(b){return{x:b.x,y:b.y,timer:b.timer,owner:b.owner,active:b.active};}),
+    bombs:bombs.map(function(b){return{x:b.x,y:b.y,timer:b.timer,owner:b.owner,active:b.active};}),
     explosions:explosions.map(function(e){return{x:e.x,y:e.y,timer:e.timer};}),
     powerups:powerups.map(function(p){return{x:p.x,y:p.y,type:p.type,bobPhase:p.bobPhase};}),
     gameOver:gameOver,
