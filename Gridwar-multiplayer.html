@@ -1263,6 +1263,8 @@ document.getElementById('btnGenerateResponse').addEventListener('click',function
       joinDC.onerror=function(){joinConnected=false;};
 
       // Send P2 input to host — only when keys change state
+      // Client-side prediction: drop bombs locally so P2 sees them instantly
+      // Uses global _p2BombJustDropped (reset by update() at bomb detonation)
       var p2Keys={},prevDx=0,prevDy=0,prevBomb=false;
       window.addEventListener('keydown',function(e){
         if(!joinConnected||!joinDC||joinDC.readyState!=='open')return;
@@ -1273,6 +1275,11 @@ document.getElementById('btnGenerateResponse').addEventListener('click',function
         else if(p2Keys['ArrowLeft'])dx=-1;
         else if(p2Keys['ArrowRight'])dx=1;
         var bomb=!!p2Keys['Enter'];
+        // Client-side prediction: drop bomb locally on press transition
+        if(bomb&&!prevBomb&&p2Keys['Enter']&&!_p2BombJustDropped){
+          dropBomb(1);
+          _p2BombJustDropped=true;
+        }
         // Only send if direction or bomb state actually changed
         if(dx!==prevDx||dy!==prevDy||bomb!==prevBomb){
           var data={type:'input',input:{dx:dx,dy:dy,bomb:bomb}};
