@@ -273,8 +273,8 @@ function mungeSdpForTcp(sdp) {
   var filtered = [];
   for (var i = 0; i < lines.length; i++) {
     var line = lines[i];
-    if (line.match(/^a=candidate:/) && line.toLowerCase().indexOf(' udp ') !== -1) {
-      continue; // skip UDP candidates
+    if (line.match(/^a=candidate:/) && /^\s*a=candidate:\S+\s+udp\b/.test(line.toLowerCase())) {
+      continue; // skip UDP candidates only
     }
     filtered.push(line);
   }
@@ -468,7 +468,10 @@ function generateSlotInvite(slotIndex){
   setupSlotDataChannel(slotIndex);
 
   peerConns[slotIndex].createOffer().then(function(offer){
-    return peerConns[slotIndex].setLocalDescription(offer);
+    console.log('Slot '+slotIndex+' offer created, signaling state:',peerConns[slotIndex].signalingState);
+    return peerConns[slotIndex].setLocalDescription(offer).then(function(){
+      console.log('Slot '+slotIndex+' local desc set, signaling state:',peerConns[slotIndex].signalingState);
+    });
   }).then(function(){
     return new Promise(function(resolve){
       var onState=function(){
@@ -509,8 +512,11 @@ function connectSlot(slotIndex){
     var json=JSON.parse(b64dec(resp));
     var answer=JSON.parse(json.answer);
     answer.sdp=mungeSdpForTcp(answer.sdp);
-    peerConns[slotIndex].setRemoteDescription(new RTCSessionDescription(answer)).catch(function(e){
-      console.error('Slot '+slotIndex+' connect error:',e);
+    console.log('Slot '+slotIndex+' connection state before setRemoteDescription:',peerConns[slotIndex]?.connectionState,'signalingState:',peerConns[slotIndex]?.signalingState);
+    peerConns[slotIndex].setRemoteDescription(new RTCSessionDescription(answer)).then(function(){
+      console.log('Slot '+slotIndex+' remote description set successfully');
+    }).catch(function(e){
+      console.error('Slot '+slotIndex+' setRemoteDescription error:',e,'state:',peerConns[slotIndex]?.signalingState);
     });
   }catch(e){
     console.error('Invalid response for slot '+slotIndex,e);
