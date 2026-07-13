@@ -664,13 +664,7 @@ function update(dt){
     }
     if(b.active){
       b.timer-=dt*1000;
-      if(b.timer<=0){
-        var exploded=triggerExp(b);
-        if(b.owner===1)_p2BombJustDropped=false;
-        for(var j=bombs.length-1;j>=0;j--){
-          if(exploded.indexOf(bombs[j])>=0)bombs.splice(j,1);
-        }
-      }
+      if(b.timer<=0){triggerExp(b);if(b.owner===1)_p2BombJustDropped=false;bombs.splice(i,1);}
     }
   }
   // Explosions
@@ -798,56 +792,69 @@ function dropBomb(pi){
 }
 
 function triggerExp(bomb){
-  if(!bomb||bomb.x===undefined||bomb.y===undefined)return[];
-  var processed=[];
-  var queue=[bomb];
-
-  while(queue.length>0){
-    var cb=queue.shift();
-    processed.push(cb);
-    var player=players[cb.owner];
-    if(!player)continue;
-    var r=player.blastRadius;
-    var cardinals=[{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
-
-    // Center explosion
-    explosions.push({x:cb.x,y:cb.y,timer:EXP_DUR});
-    spawnExp(cb.x,cb.y);
-
-    // Expand cardinals
-    for(var ci=0;ci<cardinals.length;ci++){
-      var d=cardinals[ci];
-      for(var i=1;i<=r;i++){
-        var nx=cb.x+d.x*i,ny=cb.y+d.y*i;
-        if(nx<0||nx>=COLS||ny<0||ny>=ROWS)break;
-        if(grid[ny][nx]===SOLID)break;
-        explosions.push({x:nx,y:ny,timer:EXP_DUR});
-        spawnExp(nx,ny);
-        if(grid[ny][nx]===DESTRUCTIBLE){
-          grid[ny][nx]=EMPTY;spawnPU(nx,ny);break;
-        }
+  if(!bomb||bomb.x===undefined||bomb.y===undefined)return;
+  var player=players[bomb.owner];
+  if(!player)return;
+  var r=player.blastRadius;
+  var cardinals=[{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
+  // Center
+  explosions.push({x:bomb.x,y:bomb.y,timer:EXP_DUR});
+  spawnExp(bomb.x,bomb.y);
+  // Expand
+  for(var ci=0;ci<cardinals.length;ci++){
+    var d=cardinals[ci];
+    for(var i=1;i<=r;i++){
+      var nx=bomb.x+d.x*i,ny=bomb.y+d.y*i;
+      if(nx<0||nx>=COLS||ny<0||ny>=ROWS)break;
+      if(grid[ny][nx]===SOLID)break;
+      explosions.push({x:nx,y:ny,timer:EXP_DUR});
+      spawnExp(nx,ny);
+      if(grid[ny][nx]===DESTRUCTIBLE){
+        grid[ny][nx]=EMPTY;spawnPU(nx,ny);break;
       }
     }
-
-    // Check if any unprocessed bombs are now on explosion tiles
+  }
+  // Chain reactions
+  var done=[];
+  var chain=true;
+  while(chain){
+    chain=false;
     for(var bi=0;bi<bombs.length;bi++){
-      var other=bombs[bi];
-      if(processed.indexOf(other)>=0)continue;
-      if(queue.indexOf(other)>=0)continue;
+      if(done.indexOf(bombs[bi])>=0)continue;
       for(var ei=0;ei<explosions.length;ei++){
-        if(other.x===explosions[ei].x&&other.y===explosions[ei].y){
-          queue.push(other);
-          break;
+        if(bombs[bi].x===explosions[ei].x&&bombs[bi].y===explosions[ei].y){
+          done.push(bombs[bi]);chain=true;break;
         }
       }
     }
   }
-
+  for(var di=0;di<done.length;di++){
+    var cb=done[di];
+    if(!cb||cb.x===undefined||cb.y===undefined)continue;
+    var chainPlayer=players[cb.owner];
+    if(!chainPlayer)continue;
+    var r2=chainPlayer.blastRadius;
+    explosions.push({x:cb.x,y:cb.y,timer:EXP_DUR});
+    spawnExp(cb.x,cb.y);
+    for(var ci=0;ci<cardinals.length;ci++){
+      var d=cardinals[ci];
+      for(var i=1;i<=r2;i++){
+        var nx2=cb.x+d.x*i,ny2=cb.y+d.y*i;
+        if(nx2<0||nx2>=COLS||ny2<0||ny2>=ROWS)break;
+        if(grid[ny2][nx2]===SOLID)break;
+        explosions.push({x:nx2,y:ny2,timer:EXP_DUR});
+        spawnExp(nx2,ny2);
+        if(grid[ny2][nx2]===DESTRUCTIBLE){
+          grid[ny2][nx2]=EMPTY;spawnPU(nx2,ny2);break;
+        }
+      }
+    }
+  }
+  // Remove chain bombs
+  for(var bi=bombs.length-1;bi>=0;bi--){
+    if(done.indexOf(bombs[bi])>=0)bombs.splice(bi,1);
+  }
   SFX.explosion();
-
-  // Return all bombs that were exploded (original + chains)
-  // Caller is responsible for splicing them from bombs[]
-  return processed;
 }
 
 // ========== POWER-UPS ==========
