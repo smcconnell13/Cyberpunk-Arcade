@@ -82,6 +82,7 @@ canvas{display:block;background:#000}
     <div class="terminal-box">
       <div class="terminal-title">&gt; SUPERGRIDWAR &lt;&lt;</div>
       <div class="terminal-subtitle">// UP TO 10 PLAYERS PEER-TO-PEER //</div>
+      <div class="terminal-subtitle" style="color:#0ff;">[ TCP MODE ACTIVE ]</div>
       <div class="terminal-text">
         [1] HOST GAME<br>
         Host a match, invite up to 9 more players (2-10 total)<br><br>
@@ -254,6 +255,31 @@ function initPeerSlots(){
 // ========== BASE64 ==========
 function b64enc(s){return btoa(s)}
 function b64dec(s){return atob(s)}
+
+// ========== TCP ICE FILTER ==========
+// Only allow TCP transport candidates — drops UDP silently
+function addTcpIceFilter(pc) {
+  pc.onicecandidate = function(event) {
+    if (event.candidate && event.candidate.protocol !== 'tcp') {
+      event.candidate = null;
+      return;
+    }
+  };
+}
+
+// Remove UDP candidates from SDP before setRemoteDescription
+function mungeSdpForTcp(sdp) {
+  var lines = sdp.split('\r\n');
+  var filtered = [];
+  for (var i = 0; i < lines.length; i++) {
+    var line = lines[i];
+    if (line.match(/^a=candidate:/) && line.toLowerCase().indexOf(' udp ') !== -1) {
+      continue; // skip UDP candidates
+    }
+    filtered.push(line);
+  }
+  return filtered.join('\r\n');
+}
 
 // ========== GRID SIZING ==========
 function computeGridSize(n){
@@ -436,6 +462,7 @@ function hostStart(){
 
 function generateSlotInvite(slotIndex){
   peerConns[slotIndex]=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+  addTcpIceFilter(peerConns[slotIndex]);
   dataChannels[slotIndex]=peerConns[slotIndex].createDataChannel('game',{ordered:true});
   dataChannels[slotIndex].binaryType='arraybuffer';
   setupSlotDataChannel(slotIndex);
@@ -456,9 +483,10 @@ function generateSlotInvite(slotIndex){
           peerConns[slotIndex].removeEventListener('icegatheringstatechange',onState);
           resolve(peerConns[slotIndex].localDescription);
         }
-      },10000);
+      },20000); // TCP-only: allow extra time for slower candidate gathering
     });
   }).then(function(description){
+    description.sdp=mungeSdpForTcp(description.sdp);
     var data={id:hostSeed+'-s'+slotIndex, offer:JSON.stringify(description)};
     var code=b64enc(JSON.stringify(data));
     var inviteEl=document.getElementById('slotInvite_'+slotIndex);
@@ -480,6 +508,7 @@ function connectSlot(slotIndex){
   try{
     var json=JSON.parse(b64dec(resp));
     var answer=JSON.parse(json.answer);
+    answer.sdp=mungeSdpForTcp(answer.sdp);
     peerConns[slotIndex].setRemoteDescription(new RTCSessionDescription(answer)).catch(function(e){
       console.error('Slot '+slotIndex+' connect error:',e);
     });
@@ -621,6 +650,7 @@ document.getElementById('btnGenerateResponse').addEventListener('click',function
     var json=JSON.parse(b64dec(invite));
     var offer=JSON.parse(json.offer);
     joinPC=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+    addTcpIceFilter(joinPC);
 
     joinPC.ondatachannel=function(e){
       joinDC=e.channel;
@@ -690,7 +720,8 @@ document.getElementById('btnGenerateResponse').addEventListener('click',function
       joinDC.onerror=function(){joinConnected=false;};
     };
 
-    joinPC.setRemoteDescription(new RTCSessionDescription(offer)).then(function(){
+    var offerSdp=mungeSdpForTcp(offer.sdp);
+    joinPC.setRemoteDescription(new RTCSessionDescription({type:'offer',sdp:offerSdp})).then(function(){
       return joinPC.createAnswer();
     }).then(function(answer){
       return joinPC.setLocalDescription(answer);
@@ -708,9 +739,10 @@ document.getElementById('btnGenerateResponse').addEventListener('click',function
             joinPC.removeEventListener('icegatheringstatechange',onState);
             resolve(joinPC.localDescription);
           }
-        },10000);
+        },20000); // TCP-only: allow extra time for slower candidate gathering
       });
     }).then(function(description){
+      description.sdp=mungeSdpForTcp(description.sdp);
       var data={answer:JSON.stringify(description)};
       var code=b64enc(JSON.stringify(data));
       document.getElementById('responseCodeDisplay').textContent=code;
