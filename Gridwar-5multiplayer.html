@@ -92,7 +92,7 @@ canvas{display:block;background:#000}
   <!-- LOBBY -->
   <div id="lobbyScreen" class="screen active" style="position:absolute;top:0;left:0;width:100%;height:100%;justify-content:center;align-items:center;z-index:200">
     <div class="terminal-box">
-      <div class="terminal-title">&gt; GRIDWAR&lt;&lt;</div>
+      <div class="terminal-title">&gt; GRIDWAR x5&lt;&lt;</div>
       <div class="terminal-subtitle">// PEER-TO-PEER MULTIPLAYER //</div>
       <div class="terminal-text">
         [1] HOST GAME<br>
@@ -167,12 +167,16 @@ canvas{display:block;background:#000}
 // ============================================================
 
 // ========== CONSTANTS ==========
-const COLS=15, ROWS=13, TS=48;
+const COLS=27, ROWS=23, TS=48;
 const CW=COLS*TS, CH=ROWS*TS;
 const EMPTY=0, SOLID=1, DESTRUCTIBLE=2;
 const BOMB_FUSE=2500, EXP_DUR=500;
 const BASE_SPD=120, BASE_BOMBS=1, BASE_RAD=1;
 const SPD_INC=30, PU_CHANCE=0.25;
+
+var MAX_PLAYERS=5;
+var PLAYER_COLORS=['#00ffff','#ff00ff','#00ff88','#ff8800','#ffff00'];
+var PLAYER_NAMES=['CYBER','PHANTOM','VIPER','BLITZ','ZERO'];
 
 // ========== DOM ==========
 var canvas=document.getElementById('gameCanvas');
@@ -257,10 +261,17 @@ var stats={p1:0,p2:0,total:0};
 var lastTime=0,frameCount=0;
 
 // ========== WEBRTC ==========
-var hostPC=null,hostDC=null,hostJoined=false,hostSeed='';
+var peerConns=[],dataChannels=[],connSlots=[];
+var maxSlots=4; // 4 joiner slots + 1 host = 5 total
+var hostSeed='';
 var joinPC=null,joinDC=null,joinConnected=false;
 var debugMode=false;
-var _p2BombJustDropped=false;
+
+function initPeerSlots(){
+  peerConns=[];dataChannels=[];connSlots=[];bombDroppedFlags=[];
+  for(var i=0;i<maxSlots;i++){peerConns[i]=null;dataChannels[i]=null;connSlots[i]=false;bombDroppedFlags[i]=false;}
+}
+var bombDroppedFlags=[]; // indexed by player index (0-4)
 
 // ========== BASE64 HELPERS ==========
 // Simple base64 encode/decode for ASCII strings
@@ -268,8 +279,9 @@ function b64enc(s){return btoa(s)}
 function b64dec(s){return atob(s)}
 
 // ========== INIT GAME ==========
-function initGame(){
+function initGame(playerCount){
   if(gameStarted)return;
+  var pc=playerCount||MAX_PLAYERS;
   gameStarted=true;
   bombs=[];explosions=[];particles=[];powerups=[];
   gameOver=false;goOverlay.classList.remove('active');
@@ -312,9 +324,17 @@ function genGrid(seed){
   function rng(){s=(s*16807)%2147483647;return(s-1)/2147483646;}
 
   var safe=new Set();
-  safe.add('1,1');safe.add('1,2');safe.add('2,1');
-  safe.add((COLS-3)+','+(ROWS-2));safe.add((COLS-2)+','+(ROWS-3));
-  safe.add((COLS-2)+','+(ROWS-2));
+  // Player 1 (top-left)
+  for(var si=0;si<4;si++)for(var sj=0;sj<4;sj++)safe.add((1+si)+','+(1+sj));
+  // Player 2 (top-right)
+  for(var si=0;si<4;si++)for(var sj=0;sj<4;sj++)safe.add((COLS-5+si)+','+(1+sj));
+  // Player 3 (bottom-left)
+  for(var si=0;si<4;si++)for(var sj=0;sj<4;sj++)safe.add((1+si)+','+(ROWS-5+sj));
+  // Player 4 (bottom-right)  
+  for(var si=0;si<4;si++)for(var sj=0;sj<4;sj++)safe.add((COLS-5+si)+','+(ROWS-5+sj));
+  // Player 5 (center)
+  var cx=Math.floor(COLS/2),cy=Math.floor(ROWS/2);
+  for(var si=-1;si<=1;si++)for(var sj=-1;sj<=1;sj++)safe.add((cx+si)+','+(cy+sj));
 
   for(var y=1;y<ROWS-1;y++)for(var x=1;x<COLS-1;x++){
     if(safe.has(x+','+y))continue;
@@ -322,7 +342,7 @@ function genGrid(seed){
     if(rng()<0.60)grid[y][x]=DESTRUCTIBLE;
   }
 
-  var pillars=[[3,3],[7,3],[11,3],[3,7],[11,7],[3,9],[7,9],[11,9]];
+  var pillars=[];for(var py=6;py<ROWS-6;py+=6)for(var px=6;px<COLS-6;px+=6)if((px+py)%2===0)pillars.push([px,py]);
   for(var i=0;i<pillars.length;i++){
     var k=pillars[i][0]+','+pillars[i][1];
     if(!safe.has(k))grid[pillars[i][1]][pillars[i][0]]=SOLID;
@@ -333,123 +353,187 @@ function genGrid(seed){
 }
 
 // ========== WEBRTC HOST ==========
+function renderSlotTable(){
+  var html='';
+  for(var i=0;i<maxSlots;i++){
+    var pid=i+2;
+    var color=PLAYER_COLORS[i];
+    var name=PLAYER_NAMES[i];
+    if(connSlots[i]){
+      html+='<div style="color:'+color+';margin:4px 0;font-size:12px;">SLOT '+i+1+': <b>'+name+'</b> [CONNECTED]</div>';
+    } else {
+      html+='<div style="border:1px solid rgba(0,255,255,0.15);padding:8px;margin:4px 0;">';
+      html+='<div style="color:#666;font-size:11px;margin-bottom:4px;">SLOT '+i+1+' (PLAYER '+pid+': '+name+')</div>';
+      html+='<button class="terminal-btn" id="btnGenSlot_'+i+'" onclick="generateSlotInvite('+i+')">[ GENERATE INVITE ]</button>';
+      html+='<div id="slotInvite_'+i+'" style="font-size:10px;word-break:break-all;color:#0ff;display:none;margin:4px 0;"></div>';
+      html+='<input class="terminal-input" id="slotResponse_'+i+'" placeholder="Paste '+name+' response..." style="display:none;">';
+      html+='<button class="terminal-btn" id="btnConnectSlot_'+i+'" onclick="connectSlot('+i+')" style="display:none;font-size:10px;padding:4px 12px;">[ CONNECT ]</button>';
+      html+='</div>';
+    }
+  }
+  document.getElementById('slotTable').innerHTML=html;
+}
+
+function countConnectedPlayers(){
+  var count=1; // host = 1
+  for(var i=0;i<maxSlots;i++) if(connSlots[i]) count++;
+  return count;
+}
+
 function hostStart(){
   debugMode=false;
   showScr('host');
-  setStatus('hostStatus','[&gt;] Generating invite code...','waiting');
-  document.getElementById('inviteCodeDisplay').textContent='...';
-  document.getElementById('hostResponseInput').value='';
-  document.getElementById('hostConnectionStatus').textContent='';
-  document.getElementById('hostConnectionStatus').className='status-line';
-
+  initPeerSlots();
   hostSeed='gw-'+Math.random().toString(36).substr(2,6);
-  hostPC=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+  renderSlotTable();
+}
 
-  hostDC=hostPC.createDataChannel('game',{ordered:true});
-  hostDC.binaryType='arraybuffer';
-
-  hostDC.onopen=function(){
-    hostJoined=true;
-    // Hide all UI screens
-    var hKeys=['lobby','host','join','response'];
-    for(var h=0;h<hKeys.length;h++){screens[hKeys[h]].classList.remove('active');}
-    // Initialize game state for host
-    bombs=[];explosions=[];particles=[];powerups=[];
-    gameOver=false;
-    players=[
-      {id:1,color:'#00ffff',gx:1,gy:1,px:TS,py:TS,
-       speed:BASE_SPD,maxBombs:BASE_BOMBS,blastRadius:BASE_RAD,alive:true,md:{x:0,y:0}},
-      {id:2,color:'#ff00ff',gx:COLS-2,gy:ROWS-2,px:(COLS-2)*TS,py:(ROWS-2)*TS,
-       speed:BASE_SPD,maxBombs:BASE_BOMBS,blastRadius:BASE_RAD,alive:true,md:{x:0,y:0}}
-    ];
-    genGrid();
-    updateHUD();
-    document.getElementById('hud').style.display='flex';
-    setStatus('hostStatus','[+] Player 2 connected!','connected');
-    document.getElementById('hostConnectionStatus').textContent='[+] Game starting...';
-    document.getElementById('hostConnectionStatus').className='status-line connected';
-    sendHostInit();
-    gameStarted=true;
-    startCountdown();
-    lastTime=performance.now();
-    requestAnimationFrame(gameLoop);
+function setupSlotDataChannel(slotIndex){
+  var dc=dataChannels[slotIndex];
+  var playerIdx=slotIndex+1;
+  dc.onopen=function(){
+    connSlots[slotIndex]=true;
+    renderSlotTable();
+    var cc=0;
+    for(var i=0;i<maxSlots;i++) if(connSlots[i]) cc++;
+    if(cc>=1) document.getElementById('btnStartGame').style.display='inline-block';
   };
-
-  hostDC.onmessage=function(e){
-    if(!hostJoined)return;
+  dc.onmessage=function(e){
+    if(!connSlots[slotIndex]||!players[playerIdx]) return;
     var d=JSON.parse(e.data);
-    if(d.type==='input'&&players[1]){
-      var p2=players[1];
-      if(p2.alive){p2.md.x=d.input.dx||0;p2.md.y=d.input.dy||0;}
-      if(d.input.bomb&&p2.alive&&!_p2BombJustDropped){
-        dropBomb(1);
-        _p2BombJustDropped=true;
-      }
+    if(d.type==='input'){
+      var p=players[playerIdx];
+      if(p.alive){p.md.x=d.input.dx||0;p.md.y=d.input.dy||0;}
+      if(d.input.bomb&&p.alive&&!bombDroppedFlags[playerIdx]){dropBomb(playerIdx);bombDroppedFlags[playerIdx]=true;}
     }
   };
+  dc.onclose=function(){connSlots[slotIndex]=false;renderSlotTable();};
+  dc.onerror=function(){connSlots[slotIndex]=false;renderSlotTable();};
+}
 
-  hostDC.onclose=function(){hostJoined=false;};
-  hostDC.onerror=function(){hostJoined=false;};
+function generateSlotInvite(slotIndex){
+  peerConns[slotIndex]=new RTCPeerConnection({iceServers:[{urls:'stun:stun.l.google.com:19302'}]});
+  dataChannels[slotIndex]=peerConns[slotIndex].createDataChannel('game',{ordered:true});
+  dataChannels[slotIndex].binaryType='arraybuffer';
+  setupSlotDataChannel(slotIndex);
 
-  hostPC.createOffer().then(function(offer){
-    return hostPC.setLocalDescription(offer);
+  peerConns[slotIndex].createOffer().then(function(offer){
+    return peerConns[slotIndex].setLocalDescription(offer);
   }).then(function(){
-    // Wait for ICE gathering so candidates are included in the SDP
-    return new Promise(function(resolve,reject){
+    return new Promise(function(resolve){
       var onState=function(){
-        if(hostPC.iceGatheringState==='complete'){
-          hostPC.removeEventListener('icegatheringstatechange',onState);
-          resolve(hostPC.localDescription);
+        if(peerConns[slotIndex].iceGatheringState==='complete'){
+          peerConns[slotIndex].removeEventListener('icegatheringstatechange',onState);
+          resolve(peerConns[slotIndex].localDescription);
         }
       };
-      hostPC.addEventListener('icegatheringstatechange',onState);
-      // Safety timeout: 10 seconds
+      peerConns[slotIndex].addEventListener('icegatheringstatechange',onState);
       setTimeout(function(){
-        if(hostPC.iceGatheringState!=='complete'){
-          hostPC.removeEventListener('icegatheringstatechange',onState);
-          resolve(hostPC.localDescription);
+        if(peerConns[slotIndex].iceGatheringState!=='complete'){
+          peerConns[slotIndex].removeEventListener('icegatheringstatechange',onState);
+          resolve(peerConns[slotIndex].localDescription);
         }
       },10000);
     });
   }).then(function(description){
-    var data={id:hostSeed,offer:JSON.stringify(description)};
+    var data={id:hostSeed+'-s'+slotIndex,offer:JSON.stringify(description)};
     var code=b64enc(JSON.stringify(data));
-    document.getElementById('inviteCodeDisplay').textContent=code;
-    setStatus('hostStatus','[+] Share this code with Player 2','waiting');
+    document.getElementById('slotInvite_'+slotIndex).textContent=code;
+    document.getElementById('slotInvite_'+slotIndex).style.display='block';
+    document.getElementById('btnGenSlot_'+slotIndex).style.display='none';
+    document.getElementById('slotResponse_'+slotIndex).style.display='block';
+    document.getElementById('btnConnectSlot_'+slotIndex).style.display='inline-block';
   }).catch(function(e){
-    setStatus('hostStatus','[x] Error: '+e.message,'error');
+    console.error('Slot '+slotIndex+' invite error:',e);
   });
 }
 
+function connectSlot(slotIndex){
+  var respEl=document.getElementById('slotResponse_'+slotIndex);
+  var resp=respEl.value.trim();
+  if(!resp) return;
+  try{
+    var json=JSON.parse(b64dec(resp));
+    var answer=JSON.parse(json.answer);
+    peerConns[slotIndex].setRemoteDescription(new RTCSessionDescription(answer)).catch(function(e){
+      console.error('Slot '+slotIndex+' connect error:',e);
+    });
+  } catch(e){
+    console.error('Invalid response for slot '+slotIndex, e);
+  }
+}
+
 function sendHostInit(){
-  var gData=grid.map(function(r){return r.slice();});
-  hostDC.send(JSON.stringify({
-    type:'init',
-    grid:gData,
-    players:players.map(function(p){
-      return{px:p.px,py:p.py,speed:p.speed,maxBombs:p.maxBombs,blastRadius:p.blastRadius,alive:p.alive,id:p.id,color:p.color,gx:p.gx,gy:p.gy};
-    }),
-    bombs:bombs.map(function(b){return{x:b.x,y:b.y,timer:b.timer,owner:b.owner,active:b.active};}),
-    powerups:powerups.map(function(p){return{x:p.x,y:p.y,type:p.type,bobPhase:p.bobPhase};}),
-    seed:hostSeed
-  }));
+  for(var slot=0;slot<maxSlots;slot++){
+    if(!connSlots[slot]||!dataChannels[slot]||dataChannels[slot].readyState!=='open') continue;
+    var myPlayerIdx=slot+1;
+    var initMsg=JSON.stringify({
+      type:'init',grid:grid.map(function(r){return r.slice();}),
+      players:players.map(function(p){
+        return{px:p.px,py:p.py,speed:p.speed,maxBombs:p.maxBombs,blastRadius:p.blastRadius,alive:p.alive,id:p.id,color:p.color,gx:p.gx,gy:p.gy};
+      }),
+      bombs:bombs.map(function(b){return{x:b.x,y:b.y,timer:b.timer,owner:b.owner,active:b.active};}),
+      powerups:powerups.map(function(p){return{x:p.x,y:p.y,type:p.type,bobPhase:p.bobPhase};}),
+      seed:hostSeed,myPlayerIdx:myPlayerIdx
+    });
+    dataChannels[slot].send(initMsg);
+  }
 }
 
 function sendHostState(){
-  if(!hostJoined||!hostDC||hostDC.readyState!=='open')return;
-  hostDC.send(JSON.stringify({
-    type:'state',
-    grid:grid.map(function(r){return r.slice();}),
+  var stateMsg=JSON.stringify({
+    type:'state',grid:grid.map(function(r){return r.slice();}),
     players:players.map(function(p){
       return{px:p.px,py:p.py,speed:p.speed,maxBombs:p.maxBombs,blastRadius:p.blastRadius,alive:p.alive,id:p.id};
     }),
     bombs:bombs.map(function(b){return{x:b.x,y:b.y,timer:b.timer,owner:b.owner,active:b.active};}),
     explosions:explosions.map(function(e){return{x:e.x,y:e.y,timer:e.timer};}),
     powerups:powerups.map(function(p){return{x:p.x,y:p.y,type:p.type,bobPhase:p.bobPhase};}),
-    gameOver:gameOver,
-    winner:gameOver?(players[0].alive?(players[1].alive?2:0):1):-1
-  }));
+    gameOver:gameOver,winner:computeWinner()
+  });
+  for(var i=0;i<maxSlots;i++){
+    if(connSlots[i]&&dataChannels[i]&&dataChannels[i].readyState==='open') dataChannels[i].send(stateMsg);
+  }
 }
+
+function computeWinner(){
+  var alive=[];
+  for(var i=0;i<players.length;i++) if(players[i].alive) alive.push(i);
+  if(alive.length===1) return alive[0];
+  if(alive.length===0) return -2;
+  return -1;
+}
+
+function startGameFromHost(){
+  var pc=countConnectedPlayers();
+  var hKeys=['lobby','host','join','response'];
+  for(var h=0;h<hKeys.length;h++) screens[hKeys[h]].classList.remove('active');
+  bombs=[];explosions=[];particles=[];powerups=[];
+  gameOver=false;goOverlay.classList.remove('active');
+  document.getElementById('scoreboard').style.display='none';
+  startOverlay.classList.remove('active');
+  players=[];
+  for(var i=0;i<pc;i++){
+    var spawn=getSpawnPosition(i);
+    players.push({id:i+1,color:PLAYER_COLORS[i],gx:spawn.x,gy:spawn.y,px:spawn.x*TS,py:spawn.y*TS,speed:BASE_SPD,maxBombs:BASE_BOMBS,blastRadius:BASE_RAD,alive:true,md:{x:0,y:0}});
+  }
+  genGrid();updateHUD();
+  document.getElementById('hud').style.display='flex';
+  gameStarted=true;sendHostInit();startCountdown();
+  lastTime=performance.now();requestAnimationFrame(gameLoop);
+}
+
+function getSpawnPosition(playerIdx){
+  switch(playerIdx){
+    case 0: return{x:1,y:1};
+    case 1: return{x:COLS-3,y:1};
+    case 2: return{x:1,y:ROWS-3};
+    case 3: return{x:COLS-3,y:ROWS-3};
+    case 4: return{x:Math.floor(COLS/2),y:Math.floor(ROWS/2)};
+    default: return{x:1,y:1};
+  }
+}
+
 
 // ========== WEBRTC JOINER ==========
 function joinStart(){
@@ -479,6 +563,7 @@ function joinConnect(inviteCode){
     joinDC.onmessage=function(e){
       var d=JSON.parse(e.data);
       if(d.type==='init'){
+        joinPlayerIndex=d.myPlayerIdx!==undefined?d.myPlayerIdx:1;
         var gData=d.grid;
         if(gData){
           grid=gData.map(function(r){return r.slice();});
@@ -534,9 +619,8 @@ function joinConnect(inviteCode){
           gameOver=!!d.gameOver;
           if(gameOver){
             var w=d.winner;
-            if(w===0){goTitle.textContent='NETRUNNER 1 WINS';goTitle.style.color='#0ff';stats.p1++;}
-            else if(w===1){goTitle.textContent='NETRUNNER 2 WINS';goTitle.style.color='#f0f';stats.p2++;}
-            else{goTitle.textContent='MUTUAL ANNIHILATION';goTitle.style.color='#f00';}
+            if(w>=0&&w<players.length){goTitle.textContent='NETRUNNER '+PLAYER_NAMES[w]+' WINS';goTitle.style.color=PLAYER_COLORS[w];if(!stats.perPlayer)stats.perPlayer={};stats.perPlayer[w]=(stats.perPlayer[w]||0)+1;}
+            else{goTitle.textContent='TOTAL ANNIHILATION';goTitle.style.color='#ff0040';}
             stats.total++;
             goTitle.style.textShadow='0 0 20px '+goTitle.style.color+',0 0 40px '+goTitle.style.color;
             scoreboard.style.display='block';
@@ -604,8 +688,8 @@ function handleInput(dt){
     p1.md={x:dx,y:dy};
     if(keys['Enter']){dropBomb(0);keys['Enter']=false;}
   }
-  var p2=players[1];
-  if(p2&&p2.alive){
+  if(joinConnected && joinDC && joinDC.readyState==='open' && players[joinPlayerIndex] && players[joinPlayerIndex].alive){
+    var p=players[joinPlayerIndex];
     if(debugMode){
       // Host local P2 (debug mode)
       var dx=0,dy=0;
@@ -613,7 +697,7 @@ function handleInput(dt){
       else if(keys['KeyS'])dy=1;
       else if(keys['KeyA'])dx=-1;
       else if(keys['KeyD'])dx=1;
-      p2.md={x:dx,y:dy};
+      p.md={x:dx,y:dy};
       if(keys['Space']){dropBomb(1);keys['Space']=false;}
     }else if(joinConnected){
       // Joiner P2 (arrow keys + Enter) — send to host, don't drop locally
@@ -622,8 +706,8 @@ function handleInput(dt){
       else if(keys['ArrowDown'])dy=1;
       else if(keys['ArrowLeft'])dx=-1;
       else if(keys['ArrowRight'])dx=1;
-      p2.md={x:dx,y:dy};
-      p2._bomb=!!keys['Enter'];
+      p.md={x:dx,y:dy};
+      ;
     }
     // If neither debugMode nor joinConnected, p2.md stays as set by hostDC.onmessage
   }
@@ -644,7 +728,7 @@ function update(dt){
     movePlayer(p,dt);
   }
   // Send updated state to joiner every frame
-  if(hostJoined&&!debugMode)sendHostState();
+  {var ac=false;for(var si=0;si<maxSlots;si++)if(connSlots[si]){ac=true;break;}if(ac&&!debugMode)sendHostState();}
   // Power-up pickups
   for(var pi=0;pi<players.length;pi++){
     var p=players[pi];
@@ -666,7 +750,7 @@ function update(dt){
       b.timer-=dt*1000;
       if(b.timer<=0){
         var exploded=triggerExp(b);
-        if(b.owner===1)_p2BombJustDropped=false;
+        if(b.owner===1)bombDroppedFlags[1]=false;
         for(var j=bombs.length-1;j>=0;j--){
           if(exploded.indexOf(bombs[j])>=0)bombs.splice(j,1);
         }
@@ -698,13 +782,13 @@ function update(dt){
   }
   // Game over check
   if(!gameOver){
-    var a0=players[0].alive,a1=players[1].alive;
-    if(!a0||!a1){
+    var aliveCount=0,lastAlive=-1;
+    for(var gi=0;gi<players.length;gi++){if(players[gi].alive){aliveCount++;lastAlive=gi;}}
+    if(aliveCount<=1&&players.length>1){
       gameOver=true;
       var title='',color='#fff';
-      if(!a0&&!a1){title='MUTUAL ANNIHILATION';color='#ff0040';}
-      else if(!a0){title='NETRUNNER 2 WINS';color=players[1].color;stats.p2++;}
-      else{title='NETRUNNER 1 WINS';color=players[0].color;stats.p1++;}
+      if(aliveCount===1){title='NETRUNNER '+PLAYER_NAMES[lastAlive]+' WINS';color=players[lastAlive].color;if(!stats.perPlayer)stats.perPlayer={};stats.perPlayer[lastAlive]=(stats.perPlayer[lastAlive]||0)+1;}
+      else{title='TOTAL ANNIHILATION';color='#ff0040';}
       stats.total++;
       goTitle.textContent=title;
       goTitle.style.color=color;
@@ -872,19 +956,23 @@ function checkPU(p){
   }
 }
 function updateHUD(){
-  var p1=players[0],p2=players[1];
-  if(!p1||!p2)return;
-  var s1=p1.speed===BASE_SPD?'N':(p1.speed-BASE_SPD)/SPD_INC|0;
-  var s2=p2.speed===BASE_SPD?'N':(p2.speed-BASE_SPD)/SPD_INC|0;
-  p1Hud.textContent='P1: EMP['+p1.maxBombs+'] RAD['+p1.blastRadius+'] SPD['+s1+']';
-  p2Hud.textContent='P2: EMP['+p2.maxBombs+'] RAD['+p2.blastRadius+'] SPD['+s2+']';
+  var hud=document.getElementById('hud');if(!hud)return;
+  var bar=hud.querySelector('.hud-bar');
+  if(!bar){bar=document.createElement('div');bar.className='hud-bar';bar.style.cssText='display:flex;gap:4px;flex-wrap:wrap;padding:4px;';hud.insertBefore(bar,hud.firstChild);}
+  var html='';for(var i=0;i<players.length;i++){var p=players[i];var spd=p.speed===BASE_SPD?'N':(p.speed-BASE_SPD)/SPD_INC|0;
+    var cls=p.alive?'':'opacity:0.4;text-decoration:line-through;';
+    html+='<span style="color:'+PLAYER_COLORS[i]+';font-size:10px;border:1px solid '+PLAYER_COLORS[i]+';padding:2px 6px;'+cls+'">P'+(i+1)+' EMP['+p.maxBombs+'] RAD['+p.blastRadius+'] SPD['+spd+']</span>';}
+  bar.innerHTML=html;
 }
 
 // ========== SCOREBOARD ==========
 function renderScoreboard(){
-  sbP1.textContent=stats.p1;
-  sbP2.textContent=stats.p2;
-  sbTotal.textContent=stats.total;
+  var sb=document.getElementById('scoreboard');if(!sb)return;
+  var html='<div class="sb-title">SESSION SCOREBOARD</div>';
+  for(var i=0;i<players.length;i++){var wins=(stats.perPlayer&&stats.perPlayer[i])||0;
+    html+='<div style="color:'+PLAYER_COLORS[i]+';font-size:12px;margin:4px 0;text-shadow:0 0 6px '+PLAYER_COLORS[i]+'">P'+(i+1)+' ('+PLAYER_NAMES[i]+'): '+wins+' wins</div>';}
+  html+='<div style="color:#aaa;font-size:11px;margin-top:8px;">total: <span id="sbTotal">'+stats.total+'</span></div>';
+  sb.innerHTML=html;
 }
 
 // ========== PARTICLES ==========
@@ -1085,7 +1173,7 @@ function updateConnDot(){
   else if(joinConnected&&joinDC&&joinDC.readyState==='open'){
     connDot.style.background='#0f0';connDot.style.display='block';
   }
-  else if(gameStarted&&!debugMode&&!hostJoined&&!joinConnected){
+  else if(gameStarted&&!debugMode&&!anyConnected&&!joinConnected){
     connDot.style.background='#f00';connDot.style.display='block';
   }
   else{connDot.style.display='none';}
@@ -1099,51 +1187,13 @@ document.getElementById('btnDebug').addEventListener('click',function(){
   var sKeys=['lobby','host','join','response'];
   for(var i=0;i<sKeys.length;i++){ screens[sKeys[i]].classList.remove('active'); }
   document.getElementById('hud').style.display='flex';
-  p2Debug.style.display='block';
-  connDot.style.background='#f00';connDot.style.display='block';
-  genGrid();
-  players=[
-    {id:1,color:'#00ffff',gx:1,gy:1,px:TS,py:TS,
-     speed:BASE_SPD,maxBombs:BASE_BOMBS,blastRadius:BASE_RAD,alive:true,md:{x:0,y:0}},
-    {id:2,color:'#ff00ff',gx:COLS-2,gy:ROWS-2,px:(COLS-2)*TS,py:(ROWS-2)*TS,
-     speed:BASE_SPD,maxBombs:BASE_BOMBS,blastRadius:BASE_RAD,alive:true,md:{x:0,y:0}}
-  ];
-  updateHUD();
-  gameStarted=true;lastTime=performance.now();
-  requestAnimationFrame(gameLoop);
+  initGame(5);
 });
 
-document.getElementById('btnCopyInvite').addEventListener('click',function(){
-  var code=document.getElementById('inviteCodeDisplay').textContent;
-  if(code&&code!=='...'){
-    navigator.clipboard.writeText(code).then(function(){
-      var btn=document.getElementById('btnCopyInvite');
-      btn.textContent='[ COPIED! ]';
-      setTimeout(function(){btn.textContent='[ COPY INVITE ]'},1500);
-    }).catch(function(){});
-  }
+}
 });
 
-document.getElementById('btnConnect').addEventListener('click',function(){
-  var resp=document.getElementById('hostResponseInput').value.trim();
-  if(!resp){
-    setStatus('hostConnectionStatus','[x] Please paste Player 2 response','error');
-    return;
-  }
-  setStatus('hostConnectionStatus','[&gt;] Connecting...','waiting');
-  try{
-    var json=JSON.parse(b64dec(resp));
-    var answer=JSON.parse(json.answer);
-    if(!answer||!answer.sdp){
-      setStatus('hostConnectionStatus','[x] Invalid response — answer SDP is empty','error');
-      return;
-    }
-    hostPC.setRemoteDescription(new RTCSessionDescription(answer)).then(function(){
-      setStatus('hostConnectionStatus','[+] Connected! Game starting...','connected');
-    }).catch(function(e){
-      setStatus('hostConnectionStatus','[x] Error: '+e.message,'error');
-    });
-  }catch(e){
+}catch(e){
     setStatus('hostConnectionStatus','[x] Invalid response code','error');
   }
 });
@@ -1155,10 +1205,11 @@ document.getElementById('btnJoinBack').addEventListener('click',function(){
   showScr('lobby');
 });
 
+document.getElementById('btnStartGame').addEventListener('click',startGameFromHost);
+
 document.getElementById('btnHostBack').addEventListener('click',function(){
-  if(hostPC){hostPC.close();hostPC=null;}
-  if(hostDC){hostDC.close();hostDC=null;}
-  hostJoined=false;
+  for(var i=0;i<maxSlots;i++)if(peerConns[i]){peerConns[i].close();}
+  initPeerSlots();
   showScr('lobby');
 });
 
@@ -1189,6 +1240,7 @@ document.getElementById('btnGenerateResponse').addEventListener('click',function
       joinDC.onmessage=function(ev){
         var d=JSON.parse(ev.data);
         if(d.type==='init'){
+        joinPlayerIndex=d.myPlayerIdx!==undefined?d.myPlayerIdx:1;
           var gData=d.grid;
           if(gData)grid=gData.map(function(r){return r.slice();});
           var pData=d.players;
@@ -1257,7 +1309,7 @@ document.getElementById('btnGenerateResponse').addEventListener('click',function
 
       // Send P2 input to host — only when keys change state
       // Client-side prediction: drop bombs locally so P2 sees them instantly
-      // Uses global _p2BombJustDropped (reset by update() at bomb detonation)
+      // Uses global bombDroppedFlags[joinPlayerIndex||1] (reset by update() at bomb detonation)
       var p2Keys={},prevDx=0,prevDy=0,prevBomb=false;
       window.addEventListener('keydown',function(e){
         if(!joinConnected||!joinDC||joinDC.readyState!=='open')return;
@@ -1269,9 +1321,9 @@ document.getElementById('btnGenerateResponse').addEventListener('click',function
         else if(p2Keys['ArrowRight'])dx=1;
         var bomb=!!p2Keys['Enter'];
         // Client-side prediction: drop bomb locally on press transition
-        if(bomb&&!prevBomb&&p2Keys['Enter']&&!_p2BombJustDropped){
+        if(bomb&&!prevBomb&&p2Keys['Enter']&&!bombDroppedFlags[joinPlayerIndex||1]){
           dropBomb(1);
-          _p2BombJustDropped=true;
+          bombDroppedFlags[joinPlayerIndex||1]=true;
         }
         // Only send if direction or bomb state actually changed
         if(dx!==prevDx||dy!==prevDy||bomb!==prevBomb){
